@@ -222,6 +222,7 @@ object PopeyeBuild extends Build {
       "com.typesafe.akka" %% "akka-actor" % Version.Akka,
       "com.typesafe.akka" %% "akka-slf4j" % Version.Akka,
       "org.apache.kafka" %% "kafka" % Version.Kafka,
+      "org.apache.hive" % "hive-exec" % "0.13.1",
       "org.scalatest" %% "scalatest" % Version.ScalaTest % "test",
       "org.mockito" % "mockito-core" % Version.Mockito % "test",
       "com.typesafe.akka" %% "akka-testkit" % Version.Akka % "test"
