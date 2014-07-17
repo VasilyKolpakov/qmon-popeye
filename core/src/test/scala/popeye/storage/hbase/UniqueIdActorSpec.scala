@@ -11,6 +11,7 @@ import akka.pattern.ask
 import scala.concurrent.{Future, Await}
 import scala.concurrent.duration._
 import akka.util.Timeout
+import org.mockito.Matchers._
 
 
 class UniqueIdActorSpec extends AkkaTestKitSpec("uniqueid") with MockitoStubs {
@@ -51,4 +52,25 @@ class UniqueIdActorSpec extends AkkaTestKitSpec("uniqueid") with MockitoStubs {
     verifyNoMoreInteractions(storage)
     response should equal(resolvedNames.map(rName => Resolved(rName)))
   }
+
+  it should "handle failures" in {
+    val storage = mock[UniqueIdStorageTrait]
+    val actor = TestActorRef(Props.apply(new UniqueIdActor(storage)))
+    val generationId = new BytesKey(Array[Byte](0, 0))
+    val resolvedName = ResolvedName(QualifiedName("kind", generationId, "first"), new BytesKey(Array[Byte](0)))
+    val nExceptions = 10
+    val exceptions = (1 to nExceptions).map(_ => new RuntimeException)
+    require(nExceptions == exceptions.size)
+
+    exceptions.foldLeft(storage.findByName(any[Seq[QualifiedName]]) throws new RuntimeException) {
+      (stor, ex) => stor thenThrows ex
+    } thenAnswers (_ => Seq(resolvedName))
+    for(_ <- 1 to nExceptions + 1){
+      actor ! FindName(resolvedName.toQualifiedName, create = true)
+    }
+    val future = actor ? FindName(resolvedName.toQualifiedName, create = true)
+    val response = Await.result(future, 5 seconds)
+    response should equal(Resolved(resolvedName))
+  }
+
 }
