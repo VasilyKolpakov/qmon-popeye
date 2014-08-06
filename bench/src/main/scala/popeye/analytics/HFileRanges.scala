@@ -23,7 +23,6 @@ object HFileRanges {
     }
   }
 
-
   def hadoopConfiguration(hadoopConfigurationPaths: Seq[String]) = {
     val conf = new Configuration()
     for (path <- hadoopConfigurationPaths) {
