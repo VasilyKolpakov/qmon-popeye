@@ -14,6 +14,10 @@ import org.codehaus.jackson.map.ObjectMapper
 
 object HFileInputFormat {
   val splitsKey = "popeye.analytics.hadoop.HFileInputFormat.splits"
+
+  def setInputPaths(job: Job, files: Seq[HDFSFileMeta]) = {
+    job.getConfiguration.set(splitsKey, HDFSFileMeta.serializeSeqToString(files))
+  }
 }
 
 class HFileInputFormat extends InputFormat[ImmutableBytesWritable, KeyValue] {
@@ -36,7 +40,7 @@ class HFileInputFormat extends InputFormat[ImmutableBytesWritable, KeyValue] {
     var numberOfEntries = 0l
 
     override def initialize(split: InputSplit, context: TaskAttemptContext): Unit = {
-      val hFileInputSplit = split.asInstanceOf[FileSplit]
+      val hFileInputSplit = split.asInstanceOf[FileInputSplit]
       val path = hFileInputSplit.getPath
       val fs = org.apache.hadoop.fs.FileSystem.get(context.getConfiguration)
       reader = HFile.createReader(fs, path, new CacheConfig(context.getConfiguration))
@@ -112,6 +116,11 @@ object HDFSFileMeta {
 case class HDFSFileMeta(path: Path, length: Long, locations: Vector[String])
 
 class FileInputSplit(var data: HDFSFileMeta) extends InputSplit with Writable {
+  // default constructor is required for Wirtable implementations
+  def this() = this(null)
+
+  def getPath: Path = data.path
+
   override def getLength: Long = data.length
 
   override def getLocations: Array[String] = data.locations.toArray

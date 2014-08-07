@@ -9,6 +9,9 @@ import org.apache.hadoop.fs.{FileSystem, Path}
 import org.apache.hadoop.hbase.{KeyValue, CellUtil}
 import org.apache.hadoop.hbase.io.hfile.{HFileScanner, CacheConfig, HFile, HFileReaderV2}
 import org.apache.hadoop.hbase.util.Bytes
+import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspectorFactory
+import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspectorFactory.ObjectInspectorOptions
+import org.apache.hadoop.hive.serde2.typeinfo.TypeInfoUtils
 import popeye.storage.hbase.BytesKey
 import scala.collection.mutable.ArrayBuffer
 import scala.math.Ordering.comparatorToOrdering
@@ -16,6 +19,7 @@ import scala.collection.mutable
 
 import scala.collection.mutable
 import scala.util.{Success, Failure, Try}
+import scala.collection.JavaConverters._
 
 object OtsdbHfileReader {
   /** Number of LSBs in time_deltas reserved for flags.  */
@@ -25,6 +29,10 @@ object OtsdbHfileReader {
   case class QId(kind: String, id: BytesKey)
 
   case class IdMapping(metrics: Map[BytesKey, String], tagKeys: Map[BytesKey, String], tagValues: Map[BytesKey, String])
+
+  case class IdMappingJava(metrics: util.Map[BytesKey, String],
+                           tagKeys: util.Map[BytesKey, String],
+                           tagValues: util.Map[BytesKey, String])
 
   case class ParsedRow(metric: String, baseTime: Int, tags: Seq[(String, String)])
 
@@ -61,9 +69,16 @@ object OtsdbHfileReader {
     val paths = ranges.filter(_._2.isPrefixInRange(metricId)).map(_._1)
     println(f"metrics.size = ${ names.metrics.size }")
     println("scannning...")
+    val inspectorPointNumber = ObjectInspectorFactory.getReflectionObjectInspector(classOf[TsdbRowPointsNumber], ObjectInspectorOptions.JAVA)
+    val inspectorTags = ObjectInspectorFactory.getReflectionObjectInspector(classOf[TsdbRowTags], ObjectInspectorOptions.JAVA)
+    val typeString = "struct<metric:string,tags:string,tag_key:string,tag_value:string>"
+
+    val typeInfo = TypeInfoUtils.getTypeInfoFromTypeString(typeString)
+    val oip = TypeInfoUtils.getStandardJavaObjectInspectorFromTypeInfo(typeInfo)
+
     usingReaders(fs, cc, paths) {
       readers =>
-        OtdsbOrcConverter.usingOrcWriters(Seq((new Path("number_of_points"), classOf[TsdbRowPointsNumber]), (new Path("tags"), classOf[TsdbRowTags]))) {
+        OtdsbOrcConverter.usingOrcWriters(Seq((new Path("number_of_points"), inspectorPointNumber), (new Path("tags"), oip))) {
           case Seq(pointsCountWriter, tagsWriter) =>
             val tagsSet = mutable.HashSet[String]()
             for (rowKVs <- filterRowsByPrefix(metricId, readers)) {
@@ -74,7 +89,7 @@ object OtsdbHfileReader {
               pointsCountWriter.addRow(TsdbRowPointsNumber(metric, tagsString, baseTime, numberOfPoints))
               if (tagsSet.add(tagsString)) {
                 for ((tagKey, tagValue) <- tags) {
-                  tagsWriter.addRow(TsdbRowTags(metric, tagsString, tagKey, tagValue))
+                  tagsWriter.addRow(util.Arrays.asList(metric, tagsString, tagKey, tagValue))
                 }
               }
             }
@@ -166,6 +181,15 @@ object OtsdbHfileReader {
         val kvIterator = getUniqKVIterator(scanners)
         parseNames(kvIterator)
     }
+  }
+
+  def loadAllNamesJava(fs: FileSystem, cc: CacheConfig, nameColumnPath: Path): IdMappingJava = {
+    val names = loadAllNames(fs, cc, nameColumnPath)
+    IdMappingJava(
+      metrics = names.metrics.asJava,
+      tagKeys = names.metrics.asJava,
+      tagValues = names.metrics.asJava
+    )
   }
 
   def usingReaders[A](fs: FileSystem, cc: CacheConfig, hFilesPaths: Seq[Path])(operation: Seq[HFile.Reader] => A) = {

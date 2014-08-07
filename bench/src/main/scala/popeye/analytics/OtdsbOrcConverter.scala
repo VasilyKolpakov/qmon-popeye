@@ -6,7 +6,7 @@ import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
 import org.apache.hadoop.hive.ql.io.orc
 import org.apache.hadoop.hive.ql.io.orc.OrcFile
-import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspectorFactory
+import org.apache.hadoop.hive.serde2.objectinspector.{ObjectInspector, ObjectInspectorFactory}
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspectorFactory.ObjectInspectorOptions
 import popeye.pipeline.MetricGenerator
 
@@ -27,7 +27,9 @@ object OtdsbOrcConverter {
     )
 
     var t = 0
-    usingOrcWriter(path, classOf[TsdbRowCompressed]) {
+
+    val inspector = ObjectInspectorFactory.getReflectionObjectInspector(classOf[TsdbRowCompressed], ObjectInspectorOptions.JAVA)
+    usingOrcWriter(path, inspector) {
       orcWriter =>
         for {
           metric <- MetricGenerator.metrics
@@ -42,8 +44,8 @@ object OtdsbOrcConverter {
     }
   }
 
-  def usingOrcWriter[S, R](path: Path, structClass: Class[S])(operation: orc.Writer => R) = {
-    val writer = createOrcWriter(path, structClass)
+  def usingOrcWriter[S, R](path: Path, inspector: ObjectInspector)(operation: orc.Writer => R) = {
+    val writer = createOrcWriter(path, inspector)
     try {
       operation(writer)
     } finally {
@@ -51,8 +53,8 @@ object OtdsbOrcConverter {
     }
   }
 
-  def usingOrcWriters[A](pathAndClasses: Seq[(Path, Class[_])])(operation: Seq[orc.Writer] => A) = {
-    val writerTrys = pathAndClasses.map { case (path, clazz) => Try(createOrcWriter(path, clazz)) }
+  def usingOrcWriters[A](pathAndClasses: Seq[(Path, ObjectInspector)])(operation: Seq[orc.Writer] => A) = {
+    val writerTrys = pathAndClasses.map { case (path, inspector) => Try(createOrcWriter(path, inspector)) }
     val failedCreation = writerTrys.collect { case Failure(t) => t }.headOption
     for (fail <- failedCreation) {
       writerTrys.collect { case Success(writer) => writer }.foreach(_.close())
@@ -66,10 +68,8 @@ object OtdsbOrcConverter {
     }
   }
 
-
-  def createOrcWriter[A](path: Path, structClass: Class[A]) = {
+  def createOrcWriter[A](path: Path, inspector: ObjectInspector) = {
     val writerOptions = OrcFile.writerOptions(new Configuration())
-    val inspector = ObjectInspectorFactory.getReflectionObjectInspector(structClass, ObjectInspectorOptions.JAVA)
     writerOptions.inspector(inspector)
     OrcFile.createWriter(path, writerOptions)
   }
