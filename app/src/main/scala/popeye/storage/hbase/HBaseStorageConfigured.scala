@@ -58,6 +58,8 @@ class HBaseStorageConfigured(config: HBaseStorageConfig, actorSystem: ActorSyste
       hTablePool,
       uniqueId,
       tsdbFormat,
+      new PointsTranslation(config.tsdbFormatConfig.shardAttributes),
+      config.tsdbFormatConfig.generationIdMapping,
       metrics,
       config.resolveTimeout,
       config.readChunkSize)

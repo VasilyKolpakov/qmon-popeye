@@ -4,6 +4,7 @@ import popeye.proto.Message
 import popeye.proto.Message.Point
 import popeye.proto.Message.Point.ValueType._
 import popeye.storage.QualifiedName
+import popeye.storage.hbase.PointsTranslation.TranslationResult
 import popeye.storage.hbase.TsdbFormat.{NoDownsampling, Downsampling}
 import TsdbFormat._
 import scala.collection.JavaConverters._
@@ -11,7 +12,13 @@ import scala.collection.immutable.SortedMap
 
 import scala.collection.mutable
 
-object PointTranslation {
+object PointsTranslation {
+
+  trait TranslationResult
+
+  case class SuccessfulTranslation(rawPoint: RawPointT) extends TranslationResult
+
+  case object IdCacheMiss extends TranslationResult
 
   def shardAttributeToShardName(attrName: String, attrValue: String): String = {
     mutable.StringBuilder.newBuilder
@@ -29,16 +36,16 @@ object PointTranslation {
 
 }
 
-class PointTranslation(shardAttributeNames: Set[String]) {
+class PointsTranslation(shardAttributeNames: Set[String]) {
 
   def translateToRawPoint(point: Message.Point,
                           idCache: QualifiedName => Option[BytesKey],
                           generationId: BytesKey,
-                          downsampling: Downsampling = NoDownsampling): Option[RawPointT] = {
+                          downsampling: Downsampling = NoDownsampling): TranslationResult = {
     val timeseriesIdOption: Option[TimeseriesId] = getTimeseriesId(point, idCache, generationId, downsampling)
     timeseriesIdOption.map {
       timeseriesId =>
-        point.getValueType match {
+        val rawPoint = point.getValueType match {
           case INT =>
             RawPoint(timeseriesId, point.getTimestamp.toInt, Left(point.getIntValue))
           case FLOAT =>
@@ -50,6 +57,9 @@ class PointTranslation(shardAttributeNames: Set[String]) {
             val floats = point.getFloatListValueList.asScala.map(_.floatValue())
             RawListPoint(timeseriesId, point.getTimestamp.toInt, Right(floats))
         }
+        PointsTranslation.SuccessfulTranslation(rawPoint)
+    }.getOrElse {
+      PointsTranslation.IdCacheMiss
     }
   }
 

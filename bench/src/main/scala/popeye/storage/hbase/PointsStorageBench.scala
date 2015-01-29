@@ -73,6 +73,8 @@ object PointsStorageBench extends Logging {
         hTablePool,
         uniqueId,
         tsdbFormat,
+        new PointsTranslation(Set(shardAttr)),
+        timeRangeIdMapping,
         storageMetrics,
         readChunkSize = 1000
       )
@@ -244,6 +246,8 @@ object PointsStorageBench extends Logging {
       hTablePool,
       uniqueId,
       tsdbFormat,
+      new PointsTranslation(Set(shardAttr)),
+      timeRangeIdMapping,
       pointsStorageMetrics,
       readChunkSize = 10
     )

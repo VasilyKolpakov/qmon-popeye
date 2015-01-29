@@ -307,7 +307,7 @@ class TsdbPointsFilterSpec extends AkkaTestKitSpec("points-storage") with Matche
   def createStorageStub(generationIdMapping: GenerationIdMapping = new FixedGenerationId(0)): PointsStorageStub = {
     val storageStub = new PointsStorageStub(
       shardAttrs = Set("cluster"),
-      timeRangeIdMapping = generationIdMapping)
+      generationIdMapping = generationIdMapping)
     storageStub
   }
 }

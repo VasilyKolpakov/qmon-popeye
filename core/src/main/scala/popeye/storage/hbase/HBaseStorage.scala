@@ -56,6 +56,8 @@ class HBaseStorage(tableName: String,
                    hTablePool: HTablePool,
                    uniqueId: UniqueId,
                    tsdbFormat: TsdbFormat,
+                   pointsTranslation: PointsTranslation,
+                   generationIdMapping: GenerationIdMapping,
                    metrics: HBaseStorageMetrics,
                    resolveTimeout: Duration = 15 seconds,
                    readChunkSize: Int) extends TimeseriesStorage with Logging {
@@ -276,12 +278,22 @@ class HBaseStorage(tableName: String,
       idMapFuture.map {
         idMap =>
           val keyValues = ArrayBuffer[KeyValue]()
-          delayedPoints.map(point => tsdbFormat.convertToKeyValue(point, idMap.get, currentTimeInSeconds)).foreach {
-            case SuccessfulConversion(keyValue) => keyValues += keyValue
-            case IdCacheMiss => handlePointConversionError(
-              new RuntimeException("delayed points conversion error: not all names were resolved")
-            )
-            case FailedConversion(ex) => handlePointConversionError(ex)
+          delayedPoints.foreach {
+            point =>
+              val pointTimestamp = point.getTimestamp.toInt
+              try {
+                val generationId = generationIdMapping.getGenerationIdBytes(pointTimestamp, currentTimeInSeconds)
+                pointsTranslation.translateToRawPoint(point, idMap.get, generationId, NoDownsampling) match {
+                  case PointsTranslation.SuccessfulTranslation(rawPoint) =>
+                    val keyValue = tsdbFormat.createPointKeyValue(rawPoint, currentTimeInSeconds * 1000)
+                    keyValues += keyValue
+                  case PointsTranslation.IdCacheMiss => handlePointConversionError(
+                    new RuntimeException("delayed points conversion error: not all names were resolved")
+                  )
+                }
+              } catch {
+                case e: Exception => handlePointConversionError(e)
+              }
           }
           writeKv(keyValues)
           keyValues.size
@@ -296,11 +308,19 @@ class HBaseStorage(tableName: String,
       val keyValues = ArrayBuffer[KeyValue]()
       val delayedPoints = ArrayBuffer[Message.Point]()
       points.foreach {
-        point => tsdbFormat.convertToKeyValue(point, idCache, currentTimeInSeconds) match {
-          case SuccessfulConversion(keyValue) => keyValues += keyValue
-          case IdCacheMiss => delayedPoints += point
-          case FailedConversion(e) => handlePointConversionError(e)
-        }
+        point =>
+          val pointTimestamp = point.getTimestamp.toInt
+          try {
+            val generationId = generationIdMapping.getGenerationIdBytes(pointTimestamp, currentTimeInSeconds)
+            pointsTranslation.translateToRawPoint(point, idCache, generationId, NoDownsampling) match {
+              case PointsTranslation.SuccessfulTranslation(rawPoint) =>
+                val keyValue = tsdbFormat.createPointKeyValue(rawPoint, currentTimeInSeconds * 1000)
+                keyValues += keyValue
+              case PointsTranslation.IdCacheMiss => delayedPoints += point
+            }
+          } catch {
+            case e: Exception => handlePointConversionError(e)
+          }
       }
       metrics.resolvedPointsMeter.mark(keyValues.size)
       metrics.delayedPointsMeter.mark(delayedPoints.size)

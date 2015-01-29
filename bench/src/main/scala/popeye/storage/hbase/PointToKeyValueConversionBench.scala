@@ -12,6 +12,7 @@ import org.apache.hadoop.hbase.util.Bytes
 import org.kiji.testing.fakehtable.FakeHTable
 import popeye.bench.BenchUtils
 import popeye.pipeline.MetricGenerator
+import popeye.storage.hbase.PointsTranslation.SuccessfulTranslation
 import popeye.storage.hbase.TsdbFormat.NoDownsampling
 import popeye.test.PopeyeTestUtils
 
@@ -31,9 +32,9 @@ object PointToKeyValueConversionBench {
     val actorSystem = ActorSystem()
     val uniqueId = createUniqueId(actorSystem)
     val generationIdMapping = tsdbFormatConfig.generationIdMapping
-    val pointTranslation = new PointTranslation(shardAttrNames)
+    val pointTranslation = new PointsTranslation(shardAttrNames)
     for (point <- points) {
-      val Some(rawPoint) = pointTranslation.translateToRawPoint(
+      val SuccessfulTranslation(rawPoint) = pointTranslation.translateToRawPoint(
         point,
         qname => Some(Await.result(uniqueId.resolveIdByName(qname, create = true), Duration.Inf)),
         Bytes.toBytes(generationIdMapping.getGenerationId(point.getTimestamp.toInt, endTime)),
@@ -43,7 +44,7 @@ object PointToKeyValueConversionBench {
 
     val benchResult = BenchUtils.bench(10, 2) {
       for (point <- points) {
-        val Some(rawPoint) = pointTranslation.translateToRawPoint(
+        val SuccessfulTranslation(rawPoint) = pointTranslation.translateToRawPoint(
           point,
           uniqueId.findIdByName,
           Bytes.toBytes(generationIdMapping.getGenerationId(point.getTimestamp.toInt, endTime)),

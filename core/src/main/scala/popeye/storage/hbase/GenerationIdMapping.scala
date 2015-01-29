@@ -16,6 +16,11 @@ object GenerationIdMapping {
 trait GenerationIdMapping {
   def getGenerationId(timestampInSeconds: Int, currentTimeInSeconds: Int): Short
 
+  def getGenerationIdBytes(timestampInSeconds: Int, currentTimeInSeconds: Int) = {
+    val genId = getGenerationId(timestampInSeconds, currentTimeInSeconds)
+    new BytesKey(Bytes.toBytes(genId))
+  }
+
   def backwardIterator(timestampInSeconds: Int): Iterator[TimeRangeAndId]
 }
 
