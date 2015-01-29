@@ -69,10 +69,9 @@ object RollupBench {
       )
 
       val keyValues = for (ts <- baseTime until (baseTime + 3600) by 60) yield {
+        val rawPoint = RawPoint(timeseriesId, ts, Left(random.nextLong()))
         tsdbFormat.createPointKeyValue(
-          timeseriesId,
-          ts,
-          Left(random.nextLong()),
+          rawPoint,
           currentTimeSeconds
         ).asInstanceOf[Cell]
       }

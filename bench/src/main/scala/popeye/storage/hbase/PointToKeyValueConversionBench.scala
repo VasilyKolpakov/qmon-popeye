@@ -8,6 +8,7 @@ import com.codahale.metrics.MetricRegistry
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.hbase.DaemonThreadFactory
 import org.apache.hadoop.hbase.client.{HTableInterface, HTableInterfaceFactory, HTablePool}
+import org.apache.hadoop.hbase.util.Bytes
 import org.kiji.testing.fakehtable.FakeHTable
 import popeye.bench.BenchUtils
 import popeye.pipeline.MetricGenerator
@@ -24,28 +25,34 @@ object PointToKeyValueConversionBench {
     implicit val timeout = 5 seconds
     val endTime = 1419865200 // 29/12/14
     val points = createPoints(endTime)
-    val tsdbFormat = TsdbFormatConfig(Seq(StartTimeAndPeriod("01/10/14", 26)), Set("dc")).tsdbFormat
+    val shardAttrNames = Set("dc")
+    val tsdbFormatConfig = TsdbFormatConfig(Seq(StartTimeAndPeriod("01/10/14", 26)), shardAttrNames)
+    val tsdbFormat = tsdbFormatConfig.tsdbFormat
     val actorSystem = ActorSystem()
     val uniqueId = createUniqueId(actorSystem)
+    val generationIdMapping = tsdbFormatConfig.generationIdMapping
+    val pointTranslation = new PointTranslation(shardAttrNames)
     for (point <- points) {
-      tsdbFormat.convertToKeyValue(
+      val Some(rawPoint) = pointTranslation.translateToRawPoint(
         point,
         qname => Some(Await.result(uniqueId.resolveIdByName(qname, create = true), Duration.Inf)),
-        endTime,
+        Bytes.toBytes(generationIdMapping.getGenerationId(point.getTimestamp.toInt, endTime)),
         NoDownsampling
       )
     }
 
     val benchResult = BenchUtils.bench(10, 2) {
       for (point <- points) {
-        tsdbFormat.convertToKeyValue(
+        val Some(rawPoint) = pointTranslation.translateToRawPoint(
           point,
           uniqueId.findIdByName,
-          endTime,
+          Bytes.toBytes(generationIdMapping.getGenerationId(point.getTimestamp.toInt, endTime)),
           NoDownsampling
         )
+        tsdbFormat.createPointKeyValue(rawPoint, endTime)
       }
     }
+    actorSystem.shutdown()
     println(f"number of points: ${points.size}")
     println(f"median time: ${benchResult.medianTime}, min time:${benchResult.minTime}, max time:${benchResult.maxTime}")
   }

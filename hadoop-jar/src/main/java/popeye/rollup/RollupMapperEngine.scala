@@ -122,7 +122,8 @@ class RollupMapperEngine(tsdbFormat: TsdbFormat,
     val mapperOutputs = for (dsPoint <- rollupStrategy.rollup(points)) yield {
       val DownsamplingPoint(timestamp, value, downsampling) = dsPoint
       val dsTimeseriesId = timeseriesId.copy(downsampling = downsampling)
-      val keyValue = tsdbFormat.createPointKeyValue(dsTimeseriesId, timestamp, Right(value), keyValueTimestamp)
+      val rawPoint = RawPoint(dsTimeseriesId, timestamp, Right(value))
+      val keyValue = tsdbFormat.createPointKeyValue(rawPoint, keyValueTimestamp)
       RollupMapperOutput.fromKeyValue(keyValue)
     }
     mapperOutputs.asJava

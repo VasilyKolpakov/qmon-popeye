@@ -335,9 +335,14 @@ object TsdbFormat {
 
   case object IntListValueType extends ValueType {
     override def mkQualifiedValue(point: Message.Point, downsampling: Downsampling): (Array[Byte], Array[Byte]) = {
-      val qualifier = ValueTypes.renderQualifier(point.getTimestamp.toInt, downsampling, isFloat = false)
-      val value = longsToBytes(point.getIntListValueList.asScala)
-      (qualifier, value)
+      val longs = point.getIntListValueList.asScala.map(_.longValue())
+      makeQualifierAndValue(point.getTimestamp.toInt, longs, downsampling)
+    }
+
+    def makeQualifierAndValue(timestamp: Int, value: Seq[Long], downsampling: Downsampling) = {
+      val qualifier = ValueTypes.renderQualifier(timestamp, downsampling, isFloat = false)
+      val valueBytes = longsToBytes(value)
+      (qualifier, valueBytes)
     }
 
     override def getValueTypeStructureId: Byte = ValueTypes.ListValueTypeStructureId
@@ -349,10 +354,10 @@ object TsdbFormat {
       array
     }
 
-    private def longsToBytes(longs: Seq[java.lang.Long]) = {
+    private def longsToBytes(longs: Seq[Long]) = {
       val buffer = ByteBuffer.allocate(longs.size * 8)
       for (l <- longs) {
-        buffer.putLong(l.longValue())
+        buffer.putLong(l)
       }
       buffer.array()
     }
@@ -360,9 +365,14 @@ object TsdbFormat {
 
   case object FloatListValueType extends ValueType {
     override def mkQualifiedValue(point: Message.Point, downsampling: Downsampling): (Array[Byte], Array[Byte]) = {
-      val qualifier = ValueTypes.renderQualifier(point.getTimestamp.toInt, downsampling, isFloat = true)
-      val value = floatsToBytes(point.getFloatListValueList.asScala)
-      (qualifier, value)
+      val floats = point.getFloatListValueList.asScala.map(_.floatValue())
+      makeQualifierAndValue(point.getTimestamp.toInt, floats, downsampling)
+    }
+
+    def makeQualifierAndValue(timestamp: Int, value: Seq[Float], downsampling: Downsampling) = {
+      val qualifier = ValueTypes.renderQualifier(timestamp, downsampling, isFloat = true)
+      val valueBytes = floatsToBytes(value)
+      (qualifier, valueBytes)
     }
 
     override def getValueTypeStructureId: Byte = ValueTypes.ListValueTypeStructureId
@@ -374,7 +384,7 @@ object TsdbFormat {
       array
     }
 
-    private def floatsToBytes(floats: Seq[java.lang.Float]) = {
+    private def floatsToBytes(floats: Seq[Float]) = {
       val buffer = ByteBuffer.allocate(floats.size * 4)
       for (f <- floats) {
         buffer.putFloat(f.floatValue())
@@ -550,6 +560,24 @@ case class TimeseriesId(generationId: BytesKey,
   }
 }
 
+sealed trait RawPointT {
+  def timeseriesId: TimeseriesId
+
+  def timestamp: Int
+}
+
+case class RawPoint(timeseriesId: TimeseriesId,
+                    timestamp: Int,
+                    value: Either[Long, Float]) extends RawPointT {
+  require(timeseriesId.valueTypeId == ValueTypes.SingleValueTypeStructureId)
+}
+
+case class RawListPoint(timeseriesId: TimeseriesId,
+                        timestamp: Int,
+                        value: Either[Seq[Long], Seq[Float]]) extends RawPointT {
+  require(timeseriesId.valueTypeId == ValueTypes.ListValueTypeStructureId)
+}
+
 case class ParsedSingleValueRowResult(timeseriesId: TimeseriesId, points: PointRope)
 
 case class ParsedListValueRowResult(timeseriesId: TimeseriesId, lists: Seq[ListPoint])
@@ -621,26 +649,36 @@ class TsdbFormat(timeRangeIdMapping: GenerationIdMapping, shardAttributeNames: S
     shardAttributeToShardName(shardAttribute.getName, shardAttribute.getValue)
   }
 
-  def createPointKeyValue(timeseriesId: TimeseriesId,
-                          timestamp: Int,
-                          value: Either[Long, Float],
-                          keyValueTimestamp: Long) = {
-    require(timeseriesId.valueTypeId == ValueTypes.SingleValueTypeStructureId)
-    val qualifiedValue = value.fold(
-      longValue => {
-        IntValueType.makeQualifierAndValue(timestamp, longValue, timeseriesId.downsampling)
-      },
-      floatValue => {
-        FloatValueType.makeQualifierAndValue(timestamp, floatValue, timeseriesId.downsampling)
-      }
-    )
+  def createPointKeyValue(rawPoint: RawPointT, keyValueTimestamp: Long) = {
+    val qualifiedValue = rawPoint match {
+      case RawPoint(tsId, timestamp, value) =>
+        value.fold(
+          longValue => {
+            IntValueType.makeQualifierAndValue(timestamp, longValue, tsId.downsampling)
+          },
+          floatValue => {
+            FloatValueType.makeQualifierAndValue(timestamp, floatValue, tsId.downsampling)
+          }
+        )
+
+      case RawListPoint(tsId, timestamp, value) =>
+        value.fold(
+          longsValue => {
+            IntListValueType.makeQualifierAndValue(timestamp, longsValue, tsId.downsampling)
+          },
+          floatsValue => {
+            FloatListValueType.makeQualifierAndValue(timestamp, floatsValue, tsId.downsampling)
+          }
+        )
+    }
+    val timeseriesId = rawPoint.timeseriesId
     mkKeyValue(
       timeseriesId.generationId,
       timeseriesId.downsampling,
       timeseriesId.metricId,
       timeseriesId.valueTypeId,
       timeseriesId.shardId,
-      timestamp,
+      rawPoint.timestamp,
       timeseriesId.attributeIds.toSeq,
       keyValueTimestamp,
       qualifiedValue
