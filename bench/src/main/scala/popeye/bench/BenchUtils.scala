@@ -2,7 +2,7 @@ package popeye.bench
 
 object BenchUtils {
 
-  case class BenchResult(minTime: Double, medianTime: Double)
+  case class BenchResult(minTime: Double, medianTime: Double, maxTime: Double)
 
   def bench(samples: Int, iterations: Int)(body: => Unit) = {
     val execTimes = List.fill(samples) {
@@ -14,6 +14,7 @@ object BenchUtils {
     }.sorted.map(t => t.toDouble / iterations)
     val min = execTimes.head
     val median = execTimes(execTimes.size / 2)
-    BenchResult(min, median)
+    val max = execTimes.last
+    BenchResult(min, median, max)
   }
 }
