@@ -15,7 +15,9 @@ import org.apache.hadoop.mapreduce.TaskAttemptContext;
 import popeye.javaapi.hadoop.bulkload.TsdbKeyValueIterator;
 import popeye.javaapi.kafka.hadoop.KafkaInput;
 import popeye.kafka.KafkaSimpleConsumerFactory;
+import popeye.storage.hbase.PointsTranslation;
 import popeye.storage.hbase.TsdbFormat;
+import popeye.storage.hbase.TsdbFormatConfig;
 import popeye.storage.hbase.TsdbFormatConfig$;
 import popeye.util.ZkConnect;
 import popeye.util.ZkConnect$;
@@ -52,11 +54,14 @@ public class PopeyePointsKafkaTopicRecordReader extends RecordReader<NullWritabl
     ZkConnect hbaseZkConnect = ZkConnect$.MODULE$.parseString(hbaseZkConnectString);
     Configuration hbaseConf = new HBaseConfigured(ConfigFactory.empty(), hbaseZkConnect).hbaseConfiguration();
     hTablePool = new HTablePool(hbaseConf, 1);
-    Config tsdbFormatConfig = ConfigFactory.parseString(conf.get(TSDB_FORMAT_CONFIG));
-    TsdbFormat tsdbFormat = TsdbFormatConfig$.MODULE$.parseConfig(tsdbFormatConfig).tsdbFormat();
+    Config rawTsdbFormatConfig = ConfigFactory.parseString(conf.get(TSDB_FORMAT_CONFIG));
+    TsdbFormatConfig tsdbFormatConfig = TsdbFormatConfig$.MODULE$.parseConfig(rawTsdbFormatConfig);
+    TsdbFormat tsdbFormat = tsdbFormatConfig.tsdbFormat();
     keyValueIterator = TsdbKeyValueIterator.create(
       pointsIterator,
       tsdbFormat,
+      new PointsTranslation(tsdbFormatConfig.shardAttributes()),
+      tsdbFormatConfig.generationIdMapping(),
       uniqueIdTableName,
       hTablePool,
       cacheCapacity,

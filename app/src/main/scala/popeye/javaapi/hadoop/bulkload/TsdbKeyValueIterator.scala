@@ -4,6 +4,8 @@ import com.codahale.metrics.MetricRegistry
 import popeye.Logging
 import popeye.proto.Message
 import popeye.storage.QualifiedName
+import popeye.storage.hbase.PointsTranslation.SuccessfulTranslation
+import popeye.storage.hbase.TsdbFormat.NoDownsampling
 import popeye.storage.hbase._
 import org.apache.hadoop.hbase.KeyValue
 import scala.collection.JavaConverters._
@@ -16,6 +18,8 @@ import scala.collection.mutable.ArrayBuffer
 object TsdbKeyValueIterator {
   def create(pointsIterator: KafkaPointsIterator,
              tsdbFormat: TsdbFormat,
+             pointsTranslation: PointsTranslation,
+             generationIdMapping: GenerationIdMapping,
              uniqueIdTableName: String,
              tablePool: HTablePool,
              maxCacheSize: Int,
@@ -23,13 +27,22 @@ object TsdbKeyValueIterator {
     val metrics = new UniqueIdStorageMetrics("uniqueid.storage", new MetricRegistry)
     val idStorage = new UniqueIdStorage(uniqueIdTableName, tablePool, metrics)
     val uniqueId = new LightweightUniqueId(idStorage, maxCacheSize)
-    new TsdbKeyValueIterator(pointsIterator, uniqueId, tsdbFormat, maxDelayedPoints)
+    new TsdbKeyValueIterator(
+      pointsIterator,
+      uniqueId,
+      tsdbFormat,
+      pointsTranslation,
+      generationIdMapping,
+      maxDelayedPoints
+    )
   }
 }
 
 class TsdbKeyValueIterator(pointsIterator: KafkaPointsIterator,
                            uniqueId: LightweightUniqueId,
                            tsdbFormat: TsdbFormat,
+                           pointsTranslation: PointsTranslation,
+                           generationIdMapping: GenerationIdMapping,
                            maxDelayedPoints: Int) extends java.util.Iterator[java.util.List[KeyValue]] with Logging {
 
   val delayedPointsBuffer = mutable.Buffer[Message.Point]()
@@ -65,11 +78,18 @@ class TsdbKeyValueIterator(pointsIterator: KafkaPointsIterator,
     val loadedIds = uniqueId.findOrRegisterIdsByNames(allQNames)
     val keyValues = ArrayBuffer[KeyValue]()
     delayedPoints.map {
-      point => tsdbFormat.convertToKeyValue(point, loadedIds.get, currentTimeInSeconds) match {
-        case SuccessfulConversion(keyValue) => keyValues += keyValue
-        case IdCacheMiss => error("some unique id wasn't resolved")
-        case FailedConversion(ex) => error(f"cannot convert delayed point: $point")
-      }
+      point =>
+        try {
+          val generationId = generationIdMapping.getGenerationIdBytes(point.getTimestamp.toInt, currentTimeInSeconds)
+          pointsTranslation.translateToRawPoint(point, loadedIds.get, generationId, NoDownsampling) match {
+            case PointsTranslation.SuccessfulTranslation(rawPoint) =>
+              val keyValue = tsdbFormat.createPointKeyValue(rawPoint, currentTimeInSeconds * 1000)
+              keyValues += keyValue
+            case PointsTranslation.IdCacheMiss => error("some unique id were not resolved")
+          }
+        } catch {
+          case ex: Exception => error(f"cannot convert delayed point: $point", ex)
+        }
     }
     keyValues
   }
@@ -78,11 +98,18 @@ class TsdbKeyValueIterator(pointsIterator: KafkaPointsIterator,
     val keyValues = ArrayBuffer[KeyValue]()
     val delayedPoints = ArrayBuffer[Message.Point]()
     points.foreach {
-      point => tsdbFormat.convertToKeyValue(point, uniqueId.findByName, currentTimeInSeconds) match {
-        case SuccessfulConversion(keyValue) => keyValues += keyValue
-        case IdCacheMiss => delayedPoints += point
-        case FailedConversion(e) => error(f"cannot convert point: $point")
-      }
+      point =>
+        try {
+          val generationId = generationIdMapping.getGenerationIdBytes(point.getTimestamp.toInt, currentTimeInSeconds)
+          pointsTranslation.translateToRawPoint(point, uniqueId.findByName, generationId, NoDownsampling) match {
+            case PointsTranslation.SuccessfulTranslation(rawPoint) =>
+              val keyValue = tsdbFormat.createPointKeyValue(rawPoint, currentTimeInSeconds * 1000)
+              keyValues += keyValue
+            case PointsTranslation.IdCacheMiss => error("some unique id were not resolved")
+          }
+        } catch {
+          case ex: Exception => error(f"cannot convert point: $point", ex)
+        }
     }
     (keyValues, delayedPoints)
   }

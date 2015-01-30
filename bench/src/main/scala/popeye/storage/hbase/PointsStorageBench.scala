@@ -1,6 +1,5 @@
 package popeye.storage.hbase
 
-import java.io.Closeable
 import java.util
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicInteger
@@ -15,6 +14,8 @@ import popeye.Logging
 import popeye.bench.BenchUtils
 import popeye.pipeline.MetricGenerator
 import popeye.proto.Message
+import popeye.storage.hbase.PointsTranslation.SuccessfulTranslation
+import popeye.storage.hbase.TsdbFormat.NoDownsampling
 import popeye.util.{ARM, ZkConnect}
 import popeye.util.hbase.HBaseConfigured
 import popeye.storage.ValueNameFilterCondition
@@ -41,6 +42,7 @@ object PointsStorageBench extends Logging {
   val shardAttrValue = "test"
 
   val tsdbFormat = new TsdbFormat(timeRangeIdMapping, Set(shardAttr))
+  val pointTranslation = new PointsTranslation(Set(shardAttr))
 
   def main(args: Array[String]): Unit = {
     args(0) match {
@@ -126,7 +128,14 @@ object PointsStorageBench extends Logging {
       Await.result(eventualIds, Duration.Inf)
       val keyValues = points.map {
         point =>
-          val result = tsdbFormat.convertToKeyValue(point, uniqueId.findIdByName, currentTime)
+          val generationId = timeRangeIdMapping.getGenerationIdBytes(point.getTimestamp.toInt, currentTime)
+          val SuccessfulTranslation(rawPoint) = pointTranslation.translateToRawPoint(
+            point,
+            uniqueId.findIdByName,
+            generationId,
+            NoDownsampling
+          )
+          val result = tsdbFormat.createPointKeyValue(rawPoint, currentTime * 1000)
           result.asInstanceOf[SuccessfulConversion].keyValue
       }
       val pointsTable = createHTablePool("tsdb").getTable("tsdb")
