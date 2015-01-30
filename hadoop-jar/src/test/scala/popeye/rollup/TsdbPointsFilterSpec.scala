@@ -7,6 +7,7 @@ import org.apache.hadoop.hbase.{Cell, CellUtil, KeyValueUtil}
 import org.scalatest.Matchers
 import popeye.proto.Message
 import popeye.proto.Message.Point
+import popeye.storage.PointsTranslation.SuccessfulTranslation
 import popeye.storage.QualifiedName
 import popeye.storage.hbase.TsdbFormat.ValueTypes._
 import popeye.storage.hbase._
@@ -234,20 +235,10 @@ class TsdbPointsFilterSpec extends AkkaTestKitSpec("points-storage") with Matche
     )
     val resolution = DownsamplingResolution.Hour
     val downsampling = EnabledDownsampling(resolution, AggregationType.Max)
-    def resolveId(qname: QualifiedName) =
-      Await.result(storageStub.uniqueId.resolveIdByName(qname, create = true)(5 seconds), Duration.Inf)
-    val SuccessfulConversion(downsampledKv) = storageStub.tsdbFormat.convertToKeyValue(
-      point = point,
-      idCache = resolveId _ andThen Some.apply,
-      currentTimeSeconds = 0,
-      downsampling = downsampling
-    )
-    val SuccessfulConversion(kv) = storageStub.tsdbFormat.convertToKeyValue(
-      point = point,
-      idCache = resolveId _ andThen Some.apply,
-      currentTimeSeconds = 0,
-      downsampling = NoDownsampling
-    )
+    val dsRawPoint = toRawPoint(point, 0, downsampling, storageStub)
+    val downsampledKv = storageStub.tsdbFormat.createPointKeyValue(dsRawPoint, 0)
+    val rawPoint = toRawPoint(point, 0, NoDownsampling, storageStub)
+    val kv = storageStub.tsdbFormat.createPointKeyValue(rawPoint, 0)
     storageStub.pointsTable.put(new Put(CellUtil.cloneRow(kv)).add(kv))
     storageStub.pointsTable.put(new Put(CellUtil.cloneRow(downsampledKv)).add(downsampledKv))
     val scan = new Scan
@@ -264,7 +255,20 @@ class TsdbPointsFilterSpec extends AkkaTestKitSpec("points-storage") with Matche
     results.head.rawCells().head should equal(downsampledKv)
   }
 
-
+  def toRawPoint(point: Message.Point,
+                 currentTimeSeconds: Int,
+                 downsampling: Downsampling = NoDownsampling,
+                 storageStub: PointsStorageStub) = {
+    def resolveId(qname: QualifiedName) = {
+      val qId = Await.result(storageStub.uniqueId.resolveIdByName(qname, create = true)(5 seconds), Duration.Inf)
+      Some(qId)
+    }
+    val generationId = storageStub.generationIdMapping
+      .getGenerationIdBytes(point.getTimestamp.toInt, currentTimeSeconds)
+    storageStub.pointsTranslation
+      .translateToRawPoint(point, resolveId, generationId, downsampling)
+      .asInstanceOf[SuccessfulTranslation].rawPoint
+  }
 
   def createPointsFilter(generationId: Short = 0,
                          downsamplingResolutionId: Int = 0,

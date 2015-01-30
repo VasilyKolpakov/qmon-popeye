@@ -10,13 +10,14 @@ import org.apache.hadoop.conf.Configuration
 import akka.testkit.TestActorRef
 import akka.actor.{Actor, ActorSystem, Props}
 import com.codahale.metrics.MetricRegistry
+import popeye.storage.PointsTranslation
 import scala.concurrent.ExecutionContext
 
 object PointsStorageStub {
   val timeRangeIdMapping: FixedGenerationId = new FixedGenerationId(0)
 }
 
-class PointsStorageStub(generationIdMapping: GenerationIdMapping = PointsStorageStub.timeRangeIdMapping,
+class PointsStorageStub(val generationIdMapping: GenerationIdMapping = PointsStorageStub.timeRangeIdMapping,
                         shardAttrs: Set[String] = Set("host"))
                        (implicit val actorSystem: ActorSystem,
                         implicit val executionContext: ExecutionContext) {
@@ -29,6 +30,7 @@ class PointsStorageStub(generationIdMapping: GenerationIdMapping = PointsStorage
   val uIdHTable = new FakeHTable(uidTableName, desc = null)
   val hTablePool = createHTablePool(pointsTable)
   val uIdHTablePool = createHTablePool(uIdHTable)
+  val pointsTranslation = new PointsTranslation(shardAttrs)
 
   val uniqueIdStorage = {
     val metrics = new UniqueIdStorageMetrics("uid", metricRegistry)
@@ -44,14 +46,13 @@ class PointsStorageStub(generationIdMapping: GenerationIdMapping = PointsStorage
   def uniqActor: TestActorRef[Actor] = TestActorRef(uniqActorProps)
 
   def uniqueId = new UniqueIdImpl(uniqActor, new UniqueIdMetrics("uniqueid", metricRegistry))
-
   val tsdbFormat = new TsdbFormat(generationIdMapping, shardAttrs)
   val storage = new HBaseStorage(
     pointsTableName,
     hTablePool,
     uniqueId,
     tsdbFormat,
-    new PointsTranslation(shardAttrs),
+    pointsTranslation,
     generationIdMapping,
     pointsStorageMetrics,
     readChunkSize = 10

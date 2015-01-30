@@ -10,6 +10,7 @@ import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.{Path, FileSystem}
 import org.apache.hadoop.hbase.client.HTablePool
 import popeye.Logging
+import popeye.storage.PointsTranslation
 import popeye.util.ZkConnect
 import popeye.util.hbase.HBaseConfigured
 

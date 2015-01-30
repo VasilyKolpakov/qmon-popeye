@@ -595,48 +595,6 @@ class TsdbFormat(timeRangeIdMapping: GenerationIdMapping, shardAttributeNames: S
 
   import TsdbFormat._
 
-  def convertToKeyValue(point: Message.Point,
-                        idCache: QualifiedName => Option[BytesKey],
-                        currentTimeSeconds: Int,
-                        downsampling: Downsampling = NoDownsampling): ConversionResult = {
-    try {
-      val generationId = getGenerationId(point, currentTimeSeconds)
-      val metricId = idCache(QualifiedName(MetricKind, generationId, point.getMetric))
-      val attributes = point.getAttributesList.asScala
-
-      val shardName = getShardName(point)
-      val shardId = idCache(QualifiedName(ShardKind, generationId, shardName))
-
-      val attributeIds = attributes.map {
-        attr =>
-          val name = idCache(QualifiedName(AttrNameKind, generationId, attr.getName))
-          val value = idCache(QualifiedName(AttrValueKind, generationId, attr.getValue))
-          (name, value)
-      }
-      val valueType = ValueTypes.getType(point.getValueType)
-      def attributesAreDefined = attributeIds.forall { case (n, v) => n.isDefined && v.isDefined }
-      if (metricId.isDefined && shardId.isDefined && attributesAreDefined) {
-        val qualifiedValue = valueType.mkQualifiedValue(point, downsampling)
-        val keyValue = mkKeyValue(
-          generationId,
-          downsampling,
-          metricId.get,
-          valueType.getValueTypeStructureId,
-          shardId.get,
-          point.getTimestamp,
-          attributeIds.map { case (n, v) => (n.get, v.get) },
-          currentTimeSeconds.toLong * 1000,
-          qualifiedValue
-        )
-        SuccessfulConversion(keyValue)
-      } else {
-        IdCacheMiss
-      }
-    } catch {
-      case e: Exception => FailedConversion(e)
-    }
-  }
-
   private def getShardName(point: Message.Point): String = {
     val attributes = point.getAttributesList.asScala
     val shardAttributes = attributes.filter(attr => shardAttributeNames.contains(attr.getName))

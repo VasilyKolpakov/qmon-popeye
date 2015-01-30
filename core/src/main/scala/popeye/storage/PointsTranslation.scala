@@ -1,15 +1,14 @@
-package popeye.storage.hbase
+package popeye.storage
 
 import popeye.proto.Message
 import popeye.proto.Message.Point
 import popeye.proto.Message.Point.ValueType._
-import popeye.storage.QualifiedName
-import popeye.storage.hbase.PointsTranslation.TranslationResult
-import popeye.storage.hbase.TsdbFormat.{NoDownsampling, Downsampling}
-import TsdbFormat._
+import popeye.storage.PointsTranslation.TranslationResult
+import popeye.storage.hbase.TsdbFormat._
+import popeye.storage.hbase._
+
 import scala.collection.JavaConverters._
 import scala.collection.immutable.SortedMap
-
 import scala.collection.mutable
 
 object PointsTranslation {

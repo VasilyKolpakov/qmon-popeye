@@ -3,7 +3,7 @@ package popeye.storage.hbase
 import org.apache.hadoop.hbase.CellUtil
 import org.apache.hadoop.hbase.client.Put
 import popeye.storage.hbase.TsdbFormat.{AggregationType, DownsamplingResolution, EnabledDownsampling}
-import popeye.storage.{PointAttributes, PointsSeriesMap, QualifiedName}
+import popeye.storage.{PointsTranslation, PointAttributes, PointsSeriesMap, QualifiedName}
 import popeye.{PointRope, AsyncIterator, Point, ListPoint}
 import popeye.test.PopeyeTestUtils._
 import popeye.test.{PopeyeTestUtils, MockitoStubs}
@@ -267,11 +267,14 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with MockitoSt
     }
 
     val downsampling = EnabledDownsampling(DownsamplingResolution.Day, AggregationType.Max)
-    val SuccessfulConversion(kv) = storageStub.tsdbFormat.convertToKeyValue(
+
+    val PointsTranslation.SuccessfulTranslation(rawPoint) = storageStub.pointsTranslation.translateToRawPoint(
       point,
       qName => Some(resolveQName(qName)),
-      10,
-      downsampling)
+      new BytesKey(Array[Byte](0, 0)),
+      downsampling
+    )
+    val kv = storageStub.tsdbFormat.createPointKeyValue(rawPoint, 0)
     storageStub.pointsTable.put(new Put(CellUtil.cloneRow(kv)).add(kv))
     val future = storageStub.storage.getPoints(
       "metric",

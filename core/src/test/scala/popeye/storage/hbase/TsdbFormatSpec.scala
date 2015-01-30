@@ -38,6 +38,25 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
 
   val defaultShardAttributeName = "name"
 
+  val sampleTimeseriesId = {
+    val metricId = Array[Byte](1, 0, 1)
+    val shardId = Array[Byte](4, 0, 1)
+    val attrs = SortedMap(
+      bytesKey(2, 0, 1) -> bytesKey(3, 0, 1),
+      bytesKey(2, 0, 2) -> bytesKey(3, 0, 2)
+    )
+    val valueTypeId = TsdbFormat.ValueTypes.SingleValueTypeStructureId
+    val downsampling = NoDownsampling
+    TimeseriesId(
+      defaultGenerationIdBytes,
+      downsampling,
+      metricId,
+      valueTypeId,
+      shardId,
+      attrs
+    )
+  }
+
   val sampleNamesToIdMapping = Seq(
     (MetricKind, "test") -> bytesKey(1, 0, 1),
 
@@ -67,19 +86,31 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
 
   it should "create KeyValue rows" in {
     val tsdbFormat = createTsdbFormat()
-    val SuccessfulConversion(keyValue) = tsdbFormat.convertToKeyValue(samplePoint, sampleIdMap.get, 0)
     val metricId = Array[Byte](1, 0, 1)
-    val valueTypeStructureId = Array[Byte](TsdbFormat.ValueTypes.SingleValueTypeStructureId)
+    val shardId = Array[Byte](4, 0, 1)
+    val attrs = SortedMap(
+      bytesKey(2, 0, 1) -> bytesKey(3, 0, 1),
+      bytesKey(2, 0, 2) -> bytesKey(3, 0, 2)
+    )
+    val valueTypeId = TsdbFormat.ValueTypes.SingleValueTypeStructureId
     val downsampling = NoDownsampling
+    val timeseriesId = TimeseriesId(
+      defaultGenerationIdBytes,
+      downsampling,
+      metricId,
+      valueTypeId,
+      shardId,
+      attrs
+    )
+    val timestamp = 3610
+    val rawPoint = RawPoint(timeseriesId, timestamp, Left(0))
+    val keyValue = tsdbFormat.createPointKeyValue(rawPoint, 0)
+    val valueTypeStructureId = Array[Byte](valueTypeId)
     val downsamplingByte = Array[Byte](TsdbFormat.renderDownsamplingByte(downsampling))
-    val timestamp = samplePoint.getTimestamp.toInt
-    val timestampBytes = Bytes.toBytes(timestamp - timestamp % downsampling.rowTimespanInSeconds)
 
+    val timestampBytes = Bytes.toBytes(timestamp - timestamp % downsampling.rowTimespanInSeconds)
     val attr = Array[Byte](2, 0, 1 /*name*/ , 3, 0, 1 /*value*/)
     val anotherAttr = Array[Byte](2, 0, 2 /*name*/ , 3, 0, 2 /*value*/)
-
-    val shardId = Array[Byte](4, 0, 1)
-
     val sortedAttributeIds = attr ++ anotherAttr
 
     val row = Seq(
@@ -96,32 +127,33 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
 
   it should "convert point values" in {
     val tsdbFormat = createTsdbFormat()
-    val SuccessfulConversion(keyValue) = tsdbFormat.convertToKeyValue(samplePoint, sampleIdMap.get, 0)
-    val timestamp = samplePoint.getTimestamp.toInt
-    val (timeseriesId, baseTime) = parseTimeseriesIdAndBaseTime(CellUtil.cloneRow(keyValue))
-    val qualifierBytes = CellUtil.cloneQualifier(keyValue)
-    val valueBytes = CellUtil.cloneValue(keyValue)
-    val (delta, isFloat) = TsdbFormat.ValueTypes.parseQualifier(qualifierBytes)
-    val value = TsdbFormat.ValueTypes.parseSingleValue(valueBytes, isFloat)
-    value should equal(Left(samplePoint.getIntValue))
-    (baseTime + delta) should equal(timestamp)
+    val timestamp = 121212100
+    val value = 31
+    val rawPoint = RawPoint(sampleTimeseriesId, timestamp, Left(value))
+    val keyValue = tsdbFormat.createPointKeyValue(rawPoint, 0)
+    val result = Result.create(Array[Cell](keyValue))
+    val parsedResult = TsdbFormat.parseSingleValueRowResult(result)
+    parsedResult.timeseriesId should equal(sampleTimeseriesId)
+    parsedResult.points.iterator.toList should equal(List(Point(timestamp, value)))
   }
 
   it should "handle int list values" in {
     val tsdbFormat = createTsdbFormat()
-    val point = createListPoint("test", 0, Seq(defaultShardAttributeName -> "value"), Left(Seq(1, 2, 3)))
-    val SuccessfulConversion(keyValue) = tsdbFormat.convertToKeyValue(point, sampleIdMap.get, 0)
-    val timestamp = point.getTimestamp.toInt
-    val result = new Result(List(keyValue).asJava)
+    val timestamp = 12312312
+    val timeseriesId = sampleTimeseriesId.copy(valueTypeId = ValueTypes.ListValueTypeStructureId)
+    val rawListPoint = RawListPoint(timeseriesId, timestamp, Left(Seq(1, 2, 3)))
+    val keyValue = tsdbFormat.createPointKeyValue(rawListPoint, 0)
+    val result = Result.create(Array[Cell](keyValue))
     parseListValueRowResult(result).lists.head should equal(ListPoint(timestamp, Left(Seq(1, 2, 3))))
   }
 
   it should "handle float list values" in {
     val tsdbFormat = createTsdbFormat()
-    val point = createListPoint("test", 0, Seq(defaultShardAttributeName -> "value"), Right(Seq(1, 2, 3)))
-    val SuccessfulConversion(keyValue) = tsdbFormat.convertToKeyValue(point, sampleIdMap.get, 0)
-    val timestamp = point.getTimestamp.toInt
-    val result = new Result(List(keyValue).asJava)
+    val timestamp = 12312312
+    val timeseriesId = sampleTimeseriesId.copy(valueTypeId = ValueTypes.ListValueTypeStructureId)
+    val rawListPoint = RawListPoint(timeseriesId, timestamp, Right(Seq(1, 2, 3)))
+    val keyValue = tsdbFormat.createPointKeyValue(rawListPoint, 0)
+    val result = Result.create(Array[Cell](keyValue))
     parseListValueRowResult(result).lists.head should equal(ListPoint(timestamp, Right(Seq(1, 2, 3))))
   }
 
@@ -129,43 +161,16 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
     val tsdbFormat = createTsdbFormat()
     import DownsamplingResolution._
     val timestamp = timespanInSeconds(Day) - resolutionInSeconds(Day)
-    val point = createPoint("test", timestamp, Seq(defaultShardAttributeName -> "value"), Right(1))
-    val downsampling = EnabledDownsampling(Day, AggregationType.Max)
-    val SuccessfulConversion(keyValue) = tsdbFormat.convertToKeyValue(point, sampleIdMap.get, 0, downsampling)
+    val timeseriesId = sampleTimeseriesId.copy(downsampling = EnabledDownsampling(Day, AggregationType.Max))
+    val value = 1
+    val rawPoint = RawPoint(timeseriesId, timestamp, Right(value))
+    val keyValue = tsdbFormat.createPointKeyValue(rawPoint, 0)
     val (tsId, baseTime) = TsdbFormat.parseTimeseriesIdAndBaseTime(CellUtil.cloneRow(keyValue))
     baseTime should equal(0)
-  }
 
-  ignore should "have good performance" in {
-    val tsdbFormat = createTsdbFormat(shardAttributes = (0 until 2).map(i => f"metric_$i").toSet)
-    val random = new Random(0)
-    val metrics = (0 until 10).map(i => f"metric_$i").toVector
-    val attrNames = (0 until 100).map(i => f"name_$i").toVector
-    val attrValues = (0 until 1000).map(i => f"value_$i").toVector
-    val allNames = metrics.map(metricName => qualifiedName(MetricKind, metricName)) ++
-      attrNames.map(attrName => qualifiedName(AttrNameKind, attrName)) ++
-      attrValues.map(attrValue => qualifiedName(AttrValueKind, attrValue))
-    val allIds = (0 until allNames.size).map(i => Bytes.toBytes(i).slice(1, 4)).map(bytes => new BytesKey(bytes))
-    val idMap = (allNames zip allIds).toMap
-    def randomElement(elems: IndexedSeq[String]) = elems(random.nextInt(elems.size))
-    val points = (0 to 100000).map {
-      i =>
-        createPoint(
-          metric = randomElement(metrics),
-          timestamp = random.nextLong(),
-          attributes = (0 to random.nextInt(4)).map { _ =>
-            (randomElement(attrNames), randomElement(attrValues))
-          },
-          value = Left(random.nextLong())
-        )
-    }
-    for (_ <- 0 to 100) {
-      val startTime = System.currentTimeMillis()
-      for (point <- points) {
-        tsdbFormat.convertToKeyValue(point, idMap.get, 0) shouldBe a[SuccessfulConversion]
-      }
-      println(f"time:${ System.currentTimeMillis() - startTime }")
-    }
+    val parsedResult = TsdbFormat.parseSingleValueRowResult(Result.create(Array[Cell](keyValue)))
+    parsedResult.timeseriesId should equal(timeseriesId)
+    parsedResult.points.iterator.toList should equal(List(Point(timestamp, 1)))
   }
 
   behavior of "IntListValueType longs serialization"
@@ -184,53 +189,30 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
     FloatListValueType.parseFloatListValue(value).toSeq should be(empty)
   }
 
-  it should "not convert point if not all names are in cache" in {
-    val tsdbFormat = createTsdbFormat()
-    val notInCache = sampleIdMap.keys.head
-    val idCache = (name: QualifiedName) => (sampleIdMap - notInCache).get(name)
-    tsdbFormat.convertToKeyValue(samplePoint, idCache, 0) should be(IdCacheMiss)
-  }
-
   behavior of "TsdbFormat.parseRowResult"
 
   it should "parse row result" in {
     val tsdbFormat = createTsdbFormat()
-    val timeAndValues: Seq[(Long, Either[Long, Float])] = Seq(
-      (100l, Left(1l)),
-      (200l, Right(1.0f)),
-      (300l, Left(2l))
+    val timeAndValues: Seq[(Int, Either[Long, Float])] = Seq(
+      (100, Left(1l)),
+      (200, Right(1.0f)),
+      (300, Left(2l))
     )
     val points = timeAndValues.map {
       case (time, value) =>
-        createPoint(
-          metric = "test",
-          timestamp = time,
-          attributes = Seq("name" -> "value", "anotherName" -> "anotherValue"),
-          value = value
-        )
+        RawPoint(sampleTimeseriesId, time, value)
     }
     val keyValues = points.map {
-      point => tsdbFormat.convertToKeyValue(point, sampleIdMap.get, 0).asInstanceOf[SuccessfulConversion].keyValue
+      point => tsdbFormat.createPointKeyValue(point, 0).asInstanceOf[Cell]
     }
     require(keyValues.map(_.getRow.toBuffer).distinct.size == 1)
-    val parsedRowResult = parseSingleValueRowResult(new Result(keyValues.asJava))
-
-    val expectedAttributeIds = SortedMap(
-      sampleIdMap(qualifiedName(AttrNameKind, "name")) -> sampleIdMap(qualifiedName(AttrValueKind, "value")),
-      sampleIdMap(qualifiedName(AttrNameKind, "anotherName")) -> sampleIdMap(qualifiedName(AttrValueKind, "anotherValue"))
-    )
+    val parsedRowResult = parseSingleValueRowResult(Result.create(keyValues.toArray))
     val expectedPoints = timeAndValues.map {
       case (time, value) =>
         Point(time.toInt, value.fold(_.toDouble, _.toDouble))
     }
-
-    val timeseriesId = parsedRowResult.timeseriesId
-    timeseriesId.generationId should equal(defaultGenerationIdBytes)
-    timeseriesId.metricId should equal(sampleIdMap(qualifiedName(MetricKind, "test")))
-    timeseriesId.shardId should equal(bytesKey(4, 0, 1))
-    timeseriesId.attributeIds should equal(expectedAttributeIds)
+    parsedRowResult.timeseriesId should equal(sampleTimeseriesId)
     parsedRowResult.points.iterator.toList should equal(expectedPoints)
-
   }
 
   it should "throw meaningful exception if row size is illegal" in {
@@ -249,45 +231,6 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
   def createTsdbFormat(prefixMapping: GenerationIdMapping = new FixedGenerationId(defaultGenerationId),
                        shardAttributes: Set[String] = Set(defaultShardAttributeName)): TsdbFormat = {
     new TsdbFormat(prefixMapping, shardAttributes)
-  }
-
-  it should "parse packed row" in {
-    val tsdbFormat = createTsdbFormat()
-    val timeAndValues: Seq[(Long, Either[Long, Float])] = Seq(
-      (100l, Left(1l)),
-      (200l, Right(1.0f)),
-      (300l, Left(2l))
-    )
-    val points = timeAndValues.map {
-      case (time, value) =>
-        createPoint(
-          metric = "test",
-          timestamp = time,
-          attributes = Seq(defaultShardAttributeName -> "value"),
-          value = value
-        )
-    }
-    val keyValues = points.map {
-      point => tsdbFormat.convertToKeyValue(point, sampleIdMap.get, 0).asInstanceOf[SuccessfulConversion].keyValue
-    }
-    val packedRow = TsdbFormat.rowPacker.packRow(keyValues)
-    val parsedRowResult = TsdbFormat.parseSingleValueRowResult(Result.create(List(packedRow).asJava))
-    val expectedPoints = timeAndValues.map {
-      case (time, value) =>
-        Point(time.toInt, value.fold(_.toDouble, _.toDouble))
-    }
-    val timeseriesId = parsedRowResult.timeseriesId
-    parsedRowResult.points.iterator.toList should equal(expectedPoints)
-  }
-
-  it should "parse downsampled timeseries correctly" in {
-    val tsdbFormat = createTsdbFormat()
-    val point = createPoint("test", 3600 * 24 * 59, Seq(defaultShardAttributeName -> "value"), Right(1))
-    val downsampling = EnabledDownsampling(DownsamplingResolution.Day, AggregationType.Max)
-    val SuccessfulConversion(keyValue) = tsdbFormat.convertToKeyValue(point, sampleIdMap.get, 0, downsampling)
-    val parsedRowResult = TsdbFormat.parseSingleValueRowResult(Result.create(List(keyValue.asInstanceOf[Cell]).asJava))
-    val timeseriesId = parsedRowResult.timeseriesId
-    parsedRowResult.points.iterator.toList should equal(List(Point(3600 * 24 * 59, 1.0)))
   }
 
   behavior of "TsdbFormat.getScanNames"

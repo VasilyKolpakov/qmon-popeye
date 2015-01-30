@@ -3,8 +3,7 @@ package popeye.javaapi.hadoop.bulkload
 import com.codahale.metrics.MetricRegistry
 import popeye.Logging
 import popeye.proto.Message
-import popeye.storage.QualifiedName
-import popeye.storage.hbase.PointsTranslation.SuccessfulTranslation
+import popeye.storage.{PointsTranslation, QualifiedName}
 import popeye.storage.hbase.TsdbFormat.NoDownsampling
 import popeye.storage.hbase._
 import org.apache.hadoop.hbase.KeyValue

@@ -12,7 +12,8 @@ import org.apache.hadoop.hbase.util.Bytes
 import org.kiji.testing.fakehtable.FakeHTable
 import popeye.bench.BenchUtils
 import popeye.pipeline.MetricGenerator
-import popeye.storage.hbase.PointsTranslation.SuccessfulTranslation
+import popeye.storage.PointsTranslation
+import PointsTranslation.SuccessfulTranslation
 import popeye.storage.hbase.TsdbFormat.NoDownsampling
 import popeye.test.PopeyeTestUtils
 
