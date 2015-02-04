@@ -1,7 +1,8 @@
 package popeye.query
 
+import com.codahale.metrics.MetricRegistry
 import org.apache.hadoop.hbase.util.Bytes
-import popeye.PointRope
+import popeye.{Logging, Instrumented, PointRope}
 import popeye.storage._
 import popeye.storage.hbase.TsdbFormat.{EnabledDownsampling, DownsamplingResolution, Downsampling, NoDownsampling}
 import scala.concurrent.{ExecutionContext, Future}
@@ -29,10 +30,16 @@ object PointsStorage {
     val MetricType, AttributeNameType, AttributeValueType = Value
   }
 
+  class PointsStorageMetrics(name: String, override val metricRegistry: MetricRegistry) extends Instrumented {
+    val seriesGroupingTime = metrics.timer(s"$name.series.grouping.time")
+    val seriesRetrievalTime = metrics.timer(s"$name.series.retrieval.time")
+  }
+
   def createPointsStorage(pointsStorage: TimeseriesStorage,
                           uniqueIdStorage: UniqueIdStorage,
                           timeRangeIdMapping: GenerationIdMapping,
-                          executionContext: ExecutionContext) = new PointsStorage {
+                          executionContext: ExecutionContext,
+                          metrics: PointsStorageMetrics) = new PointsStorage with Logging {
 
     val transparentDownsampling = new StorageWithTransparentDownsampling(pointsStorage)
 
@@ -42,6 +49,7 @@ object PointsStorage {
                   downsampling: Option[(Int, TsdbFormat.AggregationType.AggregationType)],
                   cancellation: Future[Nothing]) = {
       implicit val exct = executionContext
+      val retrievalTimer = metrics.seriesRetrievalTime.timerContext()
       val eventualPointsSeriesMap = transparentDownsampling.getSeries(
         metric,
         timeRange,
@@ -51,6 +59,8 @@ object PointsStorage {
       )
       eventualPointsSeriesMap.map {
         seriesMap =>
+          retrievalTimer.stop()
+          val groupingTimer = metrics.seriesGroupingTime.timerContext()
           val groupByAttributeNames =
             attributes
               .toList
@@ -61,6 +71,7 @@ object PointsStorage {
               val groupByAttributeValueIds = groupByAttributeNames.map(pointAttributes(_))
               SortedMap[String, String](groupByAttributeNames zip groupByAttributeValueIds: _*)
           }.mapValues(series => PointsSeriesMap(series))
+          groupingTimer.stop()
           PointsGroups(groups)
       }
     }

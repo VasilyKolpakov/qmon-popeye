@@ -49,6 +49,7 @@ case class HBaseStorageMetrics(name: String, override val metricRegistry: Metric
   val delayedPointsMeter = metrics.meter(s"$name.storage.delayed.points")
   val failedPointConversions = metrics.meter(s"$name.storage.failed.point.conversions")
   val chunkedResultsMetrics = new ChunkedResultsMetrics(f"$name.storage.read", metricRegistry)
+  val pointsDecodingTime = metrics.timer(s"$name.points.decoding.time")
 }
 
 class HBaseStorage(tableName: String,
@@ -84,6 +85,7 @@ class HBaseStorage(tableName: String,
     )
 
     def resultsToPointsSequences(results: Array[Result]): Future[PointsSeriesMap] = {
+      val decodingTimer = metrics.pointsDecodingTime.timerContext()
       val rowResults = results.map(TsdbFormat.parseSingleValueRowResult)
       val ids = rowResults.flatMap(rr => rr.timeseriesId.getUniqueIds).toSet
       val idNamePairsFuture = Future.traverse(ids) {
@@ -94,6 +96,7 @@ class HBaseStorage(tableName: String,
         idNamePairs =>
           val idMap = idNamePairs.toMap
           val pointSequences: Map[PointAttributes, PointRope] = toPointSequencesMap(rowResults, timeRange, idMap)
+          decodingTimer.stop()
           PointsSeriesMap(pointSequences)
       }
     }
@@ -166,7 +169,7 @@ class HBaseStorage(tableName: String,
         readChunkSize,
         scans
       )
-      AsyncIterator.fromImmutableIterator(resultsIterator)
+      AsyncIterator.fromImmutableIterator(resultsIterator).withReadahead(1)
     }
     AsyncIterator.unwrapFuture(resutlsIteratorFuture)
   }

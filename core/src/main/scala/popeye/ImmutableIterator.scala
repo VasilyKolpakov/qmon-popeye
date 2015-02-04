@@ -107,6 +107,13 @@ object AsyncIterator {
     foldLeft[A,Seq[A]](iter, Vector.empty, (vec, elem) => vec :+ elem, cancellation)
   }
 
+  def withReadahead[A](iter: AsyncIterator[A], readahead: Int)
+                      (implicit eCtx: ExecutionContext): AsyncIterator[A] = {
+    def singleReadahead(iter: AsyncIterator[A]): AsyncIterator[A] = new AsyncIteratorWithReadahead[A](iter.next)
+    val multilpleReadahead = Function.chain(List.fill(readahead)(singleReadahead(_)))
+    multilpleReadahead(iter)
+  }
+
 }
 
 trait AsyncIterator[A] {
@@ -114,6 +121,8 @@ trait AsyncIterator[A] {
 
   def map[B](f: A => Future[B])(implicit eCtx: ExecutionContext): AsyncIterator[B] =
     new MappedAsyncIterator[A, B](this, f)
+
+  def withReadahead(readahead: Int)(implicit eCtx: ExecutionContext) = AsyncIterator.withReadahead(this, readahead)
 }
 
 class MappedAsyncIterator[A, B](iter: AsyncIterator[A], f: A => Future[B]) extends AsyncIterator[B] {
@@ -137,4 +146,12 @@ class EmptyAsyncIterator[A] extends AsyncIterator[A] {
   override def next(implicit eCtx: ExecutionContext): Future[Option[(A, AsyncIterator[A])]] = Future.successful(None)
 }
 
-
+class AsyncIteratorWithReadahead[A](prefetchedNext: Future[Option[(A, AsyncIterator[A])]]) extends AsyncIterator[A] {
+  override def next(implicit eCtx: ExecutionContext): Future[Option[(A, AsyncIterator[A])]] = {
+    prefetchedNext.map {
+      case Some((element, nextIter)) =>
+        Some(element, new AsyncIteratorWithReadahead(nextIter.next))
+      case None => None
+    }
+  }
+}

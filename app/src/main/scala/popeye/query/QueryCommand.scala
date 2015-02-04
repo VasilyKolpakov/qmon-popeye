@@ -3,6 +3,7 @@ package popeye.query
 import akka.actor.ActorSystem
 import com.codahale.metrics.MetricRegistry
 import com.typesafe.config.Config
+import popeye.query.PointsStorage.PointsStorageMetrics
 import popeye.storage.hbase.{HBaseStorageConfig, HBaseStorageConfigured}
 import popeye._
 import scala.concurrent.ExecutionContext
@@ -43,11 +44,13 @@ object QueryCommand extends PopeyeCommand with Logging {
     val storageConfig = HBaseStorageConfig(hbaseConfig, shardAttributeNames)
     val hbaseStorage = new HBaseStorageConfigured(storageConfig, actorSystem, metrics)(ectx)
     hbaseStorage.storage.ping()
+    val pointsStorageMetrics = new PointsStorageMetrics("query", metrics)
     val pointsStorage = PointsStorage.createPointsStorage(
       hbaseStorage.storage,
       hbaseStorage.uniqueIdStorage,
       storageConfig.tsdbFormatConfig.generationIdMapping,
-      ectx
+      ectx,
+      pointsStorageMetrics
     )
     val serverFactoriesMap = getServerFactoriesMap(metrics)
     serverFactoriesMap(serverTypeKey).runServer(serverConfig, pointsStorage, actorSystem, ectx)
