@@ -58,7 +58,7 @@ object PointsStorageBench extends Logging {
   def hBaseBenchmark(zkQuorum: String,
                      numberOfPointsPerSeries: Int = 1000,
                      numberOfTagValues: (Int, Int) = (10, 10),
-                     timeStep: Int = 300) = {
+                     timeStep: Int = 60) = {
     val hBaseConfigured = new HBaseConfigured(ConfigFactory.empty(), ZkConnect.parseString(zkQuorum))
     val hTablePool = hBaseConfigured.getHTablePool(2)
     for {
@@ -74,7 +74,7 @@ object PointsStorageBench extends Logging {
         uniqueId,
         tsdbFormat,
         storageMetrics,
-        readChunkSize = 10
+        readChunkSize = 1000
       )
       val currentTime = (System.currentTimeMillis() / 1000).toInt
       val metric = UUID.randomUUID().toString.replaceAll("-", "")

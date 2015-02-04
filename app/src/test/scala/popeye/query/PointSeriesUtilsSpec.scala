@@ -29,12 +29,54 @@ class PointSeriesUtilsSpec extends FlatSpec with Matchers {
 
   it should "not output duplicate points" in {
     val input = Seq(
-      Seq(Point(0, 0), Point(1, 0)),
-      Seq(Point(0, 0), Point(1, 0)),
-      Seq(Point(0, 0), Point(1, 0))
+      Seq(Point(0, 0), Point(10, 0)),
+      Seq(Point(0, 0), Point(10, 0)),
+      Seq(Point(0, 0), Point(10, 0))
     )
     val result = PointSeriesUtils.interpolateAndDownsample(input.map(_.iterator), seq => seq.max, Some(10)).toList
     result should equal(Seq(Point(5, 0)))
+  }
+
+  it should "behave as no-op on duplicated input" in {
+    val input = (1 to 5).map(_ => (1 to 5).map(n => Point(n, n.toDouble)))
+    val aggregator: Seq[Double] => Double = {
+      seq =>
+        seq.size should be(5)
+        seq.foldLeft(-1.0)((acc, x) => x)
+    }
+    val out = PointSeriesUtils.interpolateAndDownsample(input.map(_.iterator), aggregator, Some(1))
+    out.toList should equal(input(0).toList)
+  }
+
+  it should "handle lagged series" in {
+    val input = Seq(
+      Seq(Point(20, 0), Point(30, 0)),
+      Seq(Point(0, 0), Point(10, 0))
+    )
+    val out = PointSeriesUtils.interpolateAndDownsample(input.map(_.iterator), seq => seq.max, Some(10))
+    out.toList should equal(Seq(Point(5, 0)))
+  }
+
+  it should "pass randomized test" in {
+    val random = new Random(0)
+    for (_ <- 1 to 100) {
+      val dsInterval = random.nextInt(200) + 10
+      val numberOfInputs = 20
+      val inputs = List.fill(numberOfInputs)(randomInput(random))
+      val xs = {
+        val minX = inputs.map(_.head.timestamp).min
+        val start = minX - minX % dsInterval + dsInterval / 2
+        start to Int.MaxValue by dsInterval
+      }
+      val out = PointSeriesUtils.interpolateAndDownsample(inputs.map(_.iterator), maxAggregator, Some(dsInterval)).toList
+      val expectedOut = slowInterpolation(inputs, maxAggregator, xs)
+      if (out != expectedOut) {
+        println(inputs)
+        println(out)
+        println(expectedOut)
+      }
+      out should equal(expectedOut)
+    }
   }
 
   behavior of "PointSeriesUtils.interpolateAndAggregate"
@@ -67,7 +109,16 @@ class PointSeriesUtilsSpec extends FlatSpec with Matchers {
       val numberOfInputs = 20
       val inputs = List.fill(numberOfInputs)(randomInput(random))
       val out = PointSeriesUtils.interpolateAndAggregate(inputs.map(_.iterator), maxAggregator).toList
-      val expectedOut = slowInterpolation(inputs, maxAggregator)
+      val xs = {
+        val allXs =
+          for {
+            graph <- inputs
+            if graph.size > 1
+            Point(x, _) <- graph
+          } yield x
+        allXs.distinct.sorted
+      }
+      val expectedOut = slowInterpolation(inputs, maxAggregator, xs)
       if (out != expectedOut) {
         println(inputs)
         println(out)
@@ -190,31 +241,25 @@ class PointSeriesUtilsSpec extends FlatSpec with Matchers {
   private def randomInput(random: Random): Seq[Point] = {
     val inputSize = 2 + random.nextInt(50)
     val xs = {
-      var xsSet = Set[Int]()
-      while(xsSet.size != inputSize) {
-        xsSet = xsSet + random.nextInt()
-      }
-      xsSet
+      val randomDeltas = List.fill(inputSize)(random.nextInt(100) + 1)
+      randomDeltas.scan(0)(_ + _)
     }
     val ys = List.fill(inputSize)(random.nextDouble())
     (xs.toList.sorted zip ys).map { case (x, y) => Point(x, y)}
   }
 
-  private def slowInterpolation(graphs: Seq[Seq[Point]], aggregationFunction: Seq[Double] => Double) = {
-    val xs = {
-      val allXs =
-        for {
-          graph <- graphs
-          if graph.size > 1
-          Point(x, _) <- graph
-        } yield x
-      allXs.distinct.sorted
-    }
-    xs.map {
+  private def slowInterpolation(graphs: Seq[Seq[Point]], aggregationFunction: Seq[Double] => Double, xs: Seq[Int]) = {
+    val points = xs.iterator.map {
       x =>
         val interpolations = graphs.map(interpolate(_, x)).filter(_.isDefined).map(_.get)
-        Point(x, aggregationFunction(interpolations))
+        if (interpolations.nonEmpty) {
+          Some(Point(x, aggregationFunction(interpolations)))
+        } else {
+          None
+        }
     }
+    points.takeWhile(_.isDefined).map(_.get).toList
+
   }
 
   private def interpolate(graph: Seq[Point], x: Int): Option[Double] = {

@@ -18,11 +18,13 @@ object PointSeriesUtils {
     def next(xNext: Int, yNext: Double) = copy(x2, y2, xNext, yNext)
 
     def getY(x: Int) = {
-      require(x1 <= x && x <= x2, f"x1 = $x1, x = $x, x2 = $x2")
+      require(isInRange(x), f"x1 = $x1, x = $x, x2 = $x2")
       if (x == x1) y1
       else if (x == x2) y2
       else y1 + ((y2 - y1) * (x - x1)) / (x2 - x1)
     }
+
+    def isInRange(x: Int) = x1 <= x && x <= x2
   }
 
   def interpolateAndAggregate(series: Seq[Iterator[Point]], aggregateFunction: Seq[Double] => Double): Iterator[Point] = {
@@ -48,6 +50,8 @@ object PointSeriesUtils {
         Integer.compare(y.currentLineEnd, x.currentLineEnd)
       }
     })
+
+    val buffer = ArrayBuffer[Double]()
 
     def hasNext: Boolean = activeSeries.nonEmpty || idleSeries.nonEmpty
 
@@ -89,9 +93,13 @@ object PointSeriesUtils {
     }
 
     private def currentValue(currentX: Int) = {
-      import scala.collection.breakOut
-      val values = activeSeries.map(activeSeries => activeSeries.series.head.getY(currentX))(breakOut)
-      aggregateFunction(values)
+      buffer.clear()
+      activeSeries.foreach {
+        activeSeries =>
+          val value = activeSeries.series.head.getY(currentX)
+          buffer += value
+      }
+      aggregateFunction(buffer)
     }
 
     private def activateIdleSeries(currentX: Int) {
@@ -121,13 +129,64 @@ object PointSeriesUtils {
   def interpolateAndDownsample(graphPointIterators: Seq[Iterator[Point]],
                                interpolationAggregator: (Seq[Double]) => Double,
                                downsamplingInterval: Option[Int]): Iterator[Point] = {
-    val aggregated = interpolateAndAggregate(graphPointIterators, interpolationAggregator)
     downsamplingInterval.map {
       interval =>
-        val average: (Seq[Double]) => Double = seq => seq.sum / seq.size
-        PointSeriesUtils.downsample(aggregated, interval, average)
+        val nonEmptySeries =
+          graphPointIterators
+            .map(toLines)
+            .filter(_.hasNext)
+            .map(_.buffered)
+        require(graphPointIterators.nonEmpty, "input is empty")
+        require(nonEmptySeries.nonEmpty, "all series are empty")
+        val minimalX = nonEmptySeries.map(_.head.x1).min
+        val intervalCenter = minimalX - minimalX % interval + interval / 2
+        val xs = intervalCenter to Int.MaxValue by interval
+        new InterpolationIterator(nonEmptySeries, interpolationAggregator, xs.iterator.buffered)
     }.getOrElse {
-      aggregated
+      interpolateAndAggregate(graphPointIterators, interpolationAggregator)
+    }
+  }
+
+  class InterpolationIterator(var nonEmptyLineIterators: Seq[BufferedIterator[Line]],
+                              aggregateFunction: Seq[Double] => Double,
+                              xs: BufferedIterator[Int]) extends Iterator[Point] {
+
+    var currentPoint = nextOption()
+
+    override def hasNext: Boolean = currentPoint.isDefined
+
+    override def next(): Point = {
+      val point = currentPoint.get
+      currentPoint = nextOption()
+      point
+    }
+
+    def nextOption(): Option[Point] = {
+      if (!xs.hasNext || nonEmptyLineIterators.isEmpty) return None
+      val currentX = xs.next()
+      val buffer = mutable.Buffer[Double]()
+      for (lineIterator <- nonEmptyLineIterators) {
+        dropLinesHavingSmallerX(lineIterator, currentX)
+        if (lineIterator.hasNext && lineIterator.head.isInRange(currentX)) {
+          val value = lineIterator.head.getY(currentX)
+          buffer += value
+        }
+      }
+      if (nonEmptyLineIterators.exists(series => !series.hasNext)) {
+        nonEmptyLineIterators = nonEmptyLineIterators.filter(_.hasNext)
+      }
+      if (buffer.nonEmpty) {
+        val value = aggregateFunction(buffer)
+        Some(Point(currentX, value))
+      } else {
+        None
+      }
+    }
+
+    private def dropLinesHavingSmallerX(lineIterator: BufferedIterator[Line], x: Int) = {
+      while(lineIterator.hasNext && lineIterator.head.x2 < x) {
+        lineIterator.next()
+      }
     }
   }
 
