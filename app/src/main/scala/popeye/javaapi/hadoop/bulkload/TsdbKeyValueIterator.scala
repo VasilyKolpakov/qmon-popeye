@@ -104,7 +104,7 @@ class TsdbKeyValueIterator(pointsIterator: KafkaPointsIterator,
             case PointsTranslation.SuccessfulTranslation(rawPoint) =>
               val keyValue = tsdbFormat.createPointKeyValue(rawPoint, currentTimeInSeconds * 1000)
               keyValues += keyValue
-            case PointsTranslation.IdCacheMiss => error("some unique id were not resolved")
+            case PointsTranslation.IdCacheMiss => delayedPoints += point
           }
         } catch {
           case ex: Exception => error(f"cannot convert point: $point", ex)
