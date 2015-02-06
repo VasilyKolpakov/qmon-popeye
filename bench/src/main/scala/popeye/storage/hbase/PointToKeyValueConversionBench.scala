@@ -33,7 +33,7 @@ object PointToKeyValueConversionBench {
     val actorSystem = ActorSystem()
     val uniqueId = createUniqueId(actorSystem)
     val generationIdMapping = tsdbFormatConfig.generationIdMapping
-    val pointTranslation = new PointsTranslation(shardAttrNames)
+    val pointTranslation = new PointsTranslation(generationIdMapping, shardAttrNames)
     for (point <- points) {
       val SuccessfulTranslation(rawPoint) = pointTranslation.translateToRawPoint(
         point,

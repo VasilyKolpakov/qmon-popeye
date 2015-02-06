@@ -58,7 +58,7 @@ public class PopeyePointsKafkaTopicRecordReader extends RecordReader<NullWritabl
     keyValueIterator = TsdbKeyValueIterator.create(
       pointsIterator,
       tsdbFormat,
-      new PointsTranslation(tsdbFormatConfig.shardAttributes()),
+      new PointsTranslation(tsdbFormatConfig.generationIdMapping(), tsdbFormatConfig.shardAttributes()),
       tsdbFormatConfig.generationIdMapping(),
       uniqueIdTableName,
       hTablePool,

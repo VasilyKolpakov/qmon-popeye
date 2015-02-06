@@ -3,7 +3,7 @@ package popeye.storage
 import org.apache.hadoop.hbase.util.Bytes
 import org.scalatest.{Matchers, FlatSpec}
 import popeye.proto.Message
-import popeye.storage.hbase.{RawPoint, TimeseriesId, TsdbFormat, BytesKey}
+import popeye.storage.hbase._
 import popeye.storage.hbase.TsdbFormat._
 import popeye.test.PopeyeTestUtils._
 import scala.collection.JavaConverters._
@@ -82,8 +82,17 @@ class PointsTranslationSpec extends FlatSpec with Matchers {
     result should be(PointsTranslation.IdCacheMiss)
   }
 
+  behavior of "PointsTranslation.getAllQualifiedNames"
+
+  it should "retrieve qualified names" in {
+    val pointsTranslation = createPointsTranslation()
+    val allQualifiedNames = sampleIdMap.keys.toSet
+    val names: Seq[QualifiedName] = pointsTranslation.getAllQualifiedNames(samplePoint, 0)
+    names.toSet should equal(allQualifiedNames)
+  }
+
   def createPointsTranslation() = {
-    new PointsTranslation(Set(shardAttrName))
+    new PointsTranslation(new FixedGenerationId(defaultGenerationId), Set(shardAttrName))
   }
 
   def qualifiedName(kind: String, name: String) = QualifiedName(kind, defaultGenerationIdBytes, name)

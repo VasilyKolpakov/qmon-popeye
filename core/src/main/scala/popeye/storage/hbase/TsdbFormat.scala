@@ -595,18 +595,6 @@ class TsdbFormat(timeRangeIdMapping: GenerationIdMapping, shardAttributeNames: S
 
   import TsdbFormat._
 
-  private def getShardName(point: Message.Point): String = {
-    val attributes = point.getAttributesList.asScala
-    val shardAttributes = attributes.filter(attr => shardAttributeNames.contains(attr.getName))
-    require(
-      shardAttributes.size == 1,
-      f"a point must have exactly one shard attribute; shard attributes: $shardAttributeNames"
-    )
-
-    val shardAttribute = shardAttributes.head
-    shardAttributeToShardName(shardAttribute.getName, shardAttribute.getValue)
-  }
-
   def createPointKeyValue(rawPoint: RawPointT, keyValueTimestamp: Long) = {
     val qualifiedValue = rawPoint match {
       case RawPoint(tsId, timestamp, value) =>
@@ -641,20 +629,6 @@ class TsdbFormat(timeRangeIdMapping: GenerationIdMapping, shardAttributeNames: S
       keyValueTimestamp,
       qualifiedValue
     )
-  }
-
-  def getAllQualifiedNames(point: Message.Point, currentTimeInSeconds: Int): Seq[QualifiedName] = {
-    val timeRangeId = getGenerationId(point, currentTimeInSeconds)
-    val attributes: mutable.Buffer[Attribute] = point.getAttributesList.asScala
-    val buffer = attributes.flatMap {
-      attr => Seq(
-        QualifiedName(AttrNameKind, timeRangeId, attr.getName),
-        QualifiedName(AttrValueKind, timeRangeId, attr.getValue)
-      )
-    }
-    buffer += QualifiedName(MetricKind, timeRangeId, point.getMetric)
-    buffer += QualifiedName(ShardKind, timeRangeId, getShardName(point))
-    buffer
   }
 
   def getScanNames(metric: String,

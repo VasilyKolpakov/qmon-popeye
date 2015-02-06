@@ -72,7 +72,7 @@ class TsdbKeyValueIterator(pointsIterator: KafkaPointsIterator,
 
   def convertDelayedPoints(delayedPoints: Seq[Message.Point], currentTimeInSeconds: Int) = {
     val allQNames: Set[QualifiedName] = delayedPoints.flatMap {
-      point => tsdbFormat.getAllQualifiedNames(point, currentTimeInSeconds)
+      point => pointsTranslation.getAllQualifiedNames(point, currentTimeInSeconds)
     }(scala.collection.breakOut)
     val loadedIds = uniqueId.findOrRegisterIdsByNames(allQNames)
     val keyValues = ArrayBuffer[KeyValue]()

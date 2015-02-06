@@ -1,7 +1,8 @@
 package popeye.storage
 
+import org.apache.hadoop.hbase.util.Bytes
 import popeye.proto.Message
-import popeye.proto.Message.Point
+import popeye.proto.Message.{Attribute, Point}
 import popeye.proto.Message.Point.ValueType._
 import popeye.storage.PointsTranslation.TranslationResult
 import popeye.storage.hbase.TsdbFormat._
@@ -35,7 +36,7 @@ object PointsTranslation {
 
 }
 
-class PointsTranslation(shardAttributeNames: Set[String]) {
+class PointsTranslation(timeRangeIdMapping: GenerationIdMapping, shardAttributeNames: Set[String]) {
 
   def translateToRawPoint(point: Message.Point,
                           idCache: QualifiedName => Option[BytesKey],
@@ -60,6 +61,25 @@ class PointsTranslation(shardAttributeNames: Set[String]) {
     }.getOrElse {
       PointsTranslation.IdCacheMiss
     }
+  }
+
+  def getAllQualifiedNames(point: Message.Point, currentTimeInSeconds: Int): Seq[QualifiedName] = {
+    val timeRangeId = getGenerationId(point, currentTimeInSeconds)
+    val attributes: mutable.Buffer[Attribute] = point.getAttributesList.asScala
+    val buffer = attributes.flatMap {
+      attr => Seq(
+        QualifiedName(AttrNameKind, timeRangeId, attr.getName),
+        QualifiedName(AttrValueKind, timeRangeId, attr.getValue)
+      )
+    }
+    buffer += QualifiedName(MetricKind, timeRangeId, point.getMetric)
+    buffer += QualifiedName(ShardKind, timeRangeId, getShardName(point))
+    buffer
+  }
+
+  private def getGenerationId(point: Message.Point, currentTimeSeconds: Int): BytesKey = {
+    val id = timeRangeIdMapping.getGenerationId(point.getTimestamp.toInt, currentTimeSeconds)
+    new BytesKey(Bytes.toBytes(id))
   }
 
   private def getTimeseriesId(point: Point,

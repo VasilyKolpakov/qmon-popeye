@@ -273,7 +273,7 @@ class HBaseStorage(tableName: String,
   private def writeDelayedPoints(delayedPoints: Seq[Message.Point], currentTimeInSeconds: Int)
                                 (implicit eCtx: ExecutionContext): Future[Int] = {
     if (delayedPoints.nonEmpty) {
-      val names = delayedPoints.flatMap(point => tsdbFormat.getAllQualifiedNames(point, currentTimeInSeconds)).toSet
+      val names = delayedPoints.flatMap(point => pointsTranslation.getAllQualifiedNames(point, currentTimeInSeconds)).toSet
       val idMapFuture = resolveNames(names)
       idMapFuture.map {
         idMap =>

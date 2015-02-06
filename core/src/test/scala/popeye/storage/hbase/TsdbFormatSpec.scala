@@ -73,15 +73,6 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
     case ((kind, name), id) => qualifiedName(kind, name) -> id
   }.toMap
 
-  behavior of "TsdbFormat.getAllQualifiedNames"
-
-  it should "retrieve qualified names" in {
-    val tsdbFormat = createTsdbFormat()
-    val allQualifiedNames = sampleIdMap.keys.toSet
-    val names: Seq[QualifiedName] = tsdbFormat.getAllQualifiedNames(samplePoint, 0)
-    names.toSet should equal(allQualifiedNames)
-  }
-
   behavior of "TsdbFormat.convertToKeyValue"
 
   it should "create KeyValue rows" in {

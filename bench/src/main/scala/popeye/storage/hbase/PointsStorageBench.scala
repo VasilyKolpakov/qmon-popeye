@@ -43,7 +43,7 @@ object PointsStorageBench extends Logging {
   val shardAttrValue = "test"
 
   val tsdbFormat = new TsdbFormat(timeRangeIdMapping, Set(shardAttr))
-  val pointTranslation = new PointsTranslation(Set(shardAttr))
+  val pointTranslation = new PointsTranslation(timeRangeIdMapping, Set(shardAttr))
 
   def main(args: Array[String]): Unit = {
     args(0) match {
@@ -76,7 +76,7 @@ object PointsStorageBench extends Logging {
         hTablePool,
         uniqueId,
         tsdbFormat,
-        new PointsTranslation(Set(shardAttr)),
+        pointTranslation,
         timeRangeIdMapping,
         storageMetrics,
         readChunkSize = 1000
@@ -124,7 +124,7 @@ object PointsStorageBench extends Logging {
       val uniqueId = createUniqueId(actorSystem)
       val currentTime = 1416395727 // Wed Nov 19 14:15:27 MSK 2014
       val points = createTestPoints(currentTime, "test", numberOfPointsPerSeries, numberOfTagValues, timeStep)
-      val qNames = points.flatMap(tsdbFormat.getAllQualifiedNames(_, currentTime)).toList.distinct
+      val qNames = points.flatMap(pointTranslation.getAllQualifiedNames(_, currentTime)).toList.distinct
       val eventualIds = Future.sequence(qNames.map(name => uniqueId.resolveIdByName(name, create = true)(30 seconds)))
       Await.result(eventualIds, Duration.Inf)
       val keyValues = points.map {
@@ -256,7 +256,7 @@ object PointsStorageBench extends Logging {
       hTablePool,
       uniqueId,
       tsdbFormat,
-      new PointsTranslation(Set(shardAttr)),
+      pointTranslation,
       timeRangeIdMapping,
       pointsStorageMetrics,
       readChunkSize = 10

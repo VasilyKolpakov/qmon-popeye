@@ -30,7 +30,7 @@ class PointsStorageStub(val generationIdMapping: GenerationIdMapping = PointsSto
   val uIdHTable = new FakeHTable(uidTableName, desc = null)
   val hTablePool = createHTablePool(pointsTable)
   val uIdHTablePool = createHTablePool(uIdHTable)
-  val pointsTranslation = new PointsTranslation(shardAttrs)
+  val pointsTranslation = new PointsTranslation(generationIdMapping, shardAttrs)
 
   val uniqueIdStorage = {
     val metrics = new UniqueIdStorageMetrics("uid", metricRegistry)
