@@ -10,7 +10,7 @@ import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.{Path, FileSystem}
 import org.apache.hadoop.hbase.client.HTablePool
 import popeye.Logging
-import popeye.storage.PointsTranslation
+import popeye.storage.{QueryTranslation, PointsTranslation}
 import popeye.util.ZkConnect
 import popeye.util.hbase.HBaseConfigured
 
@@ -60,6 +60,7 @@ class HBaseStorageConfigured(config: HBaseStorageConfig, actorSystem: ActorSyste
       uniqueId,
       tsdbFormat,
       new PointsTranslation(config.tsdbFormatConfig.generationIdMapping, config.tsdbFormatConfig.shardAttributes),
+      new QueryTranslation(config.tsdbFormatConfig.generationIdMapping, config.tsdbFormatConfig.shardAttributes),
       config.tsdbFormatConfig.generationIdMapping,
       metrics,
       config.resolveTimeout,

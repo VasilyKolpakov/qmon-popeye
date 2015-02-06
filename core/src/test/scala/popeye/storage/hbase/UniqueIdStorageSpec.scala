@@ -9,7 +9,7 @@ import org.kiji.testing.fakehtable.FakeHTable
 import org.scalatest.{Matchers, FlatSpec}
 import popeye.test.MockitoStubs
 import popeye.storage.QualifiedName
-import TsdbFormat._
+import popeye.storage.TranslationConstants._
 import org.scalatest.OptionValues._
 import popeye.test.PopeyeTestUtils.bytesKey
 import scala.concurrent.ExecutionContext

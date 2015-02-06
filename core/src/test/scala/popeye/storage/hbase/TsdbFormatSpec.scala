@@ -4,7 +4,7 @@ import org.scalatest.{Matchers, FlatSpec}
 import popeye.{ListPoint, Point}
 import popeye.proto.Message
 import scala.collection.JavaConverters._
-import popeye.storage.QualifiedName
+import popeye.storage.{RawQuery, QualifiedName}
 import org.apache.hadoop.hbase.util.Bytes
 import org.apache.hadoop.hbase.client.Result
 import popeye.test.PopeyeTestUtils._
@@ -56,22 +56,6 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
       attrs
     )
   }
-
-  val sampleNamesToIdMapping = Seq(
-    (MetricKind, "test") -> bytesKey(1, 0, 1),
-
-    (AttrNameKind, "name") -> bytesKey(2, 0, 1),
-    (AttrNameKind, "anotherName") -> bytesKey(2, 0, 2),
-
-    (AttrValueKind, "value") -> bytesKey(3, 0, 1),
-    (AttrValueKind, "anotherValue") -> bytesKey(3, 0, 2),
-
-    (ShardKind, shardAttributeToShardName("name", "value")) -> bytesKey(4, 0, 1)
-  )
-
-  val sampleIdMap = sampleNamesToIdMapping.map {
-    case ((kind, name), id) => qualifiedName(kind, name) -> id
-  }.toMap
 
   behavior of "TsdbFormat.convertToKeyValue"
 
@@ -224,62 +208,25 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
     new TsdbFormat(prefixMapping, shardAttributes)
   }
 
-  behavior of "TsdbFormat.getScanNames"
-
-  it should "get qualified names" in {
-    val prefixMapping = createGenerationIdMapping((0, MAX_TIMESPAN, 0), (MAX_TIMESPAN, MAX_TIMESPAN * 2, 1))
-    val tsdbFormat = createTsdbFormat(prefixMapping, shardAttributes = Set("shard"))
-    val attrs = Map(
-      "shard" -> SingleValueName("shard_1"),
-      "single" -> SingleValueName("name"),
-      "mult" -> MultipleValueNames(Seq("mult1", "mult2")),
-      "all" -> AllValueNames
-    )
-    val names = tsdbFormat.getScanNames("test", (0, MAX_TIMESPAN + 1), attrs)
-
-    val expected = Seq(
-      (MetricKind, "test"),
-      (AttrNameKind, "shard"),
-      (AttrNameKind, "single"),
-      (AttrNameKind, "mult"),
-      (AttrNameKind, "all"),
-      (AttrValueKind, "shard_1"),
-      (AttrValueKind, "name"),
-      (AttrValueKind, "mult1"),
-      (AttrValueKind, "mult2"),
-      (ShardKind, shardAttributeToShardName("shard", "shard_1"))
-    ).flatMap {
-      case (kind, name) => Seq(
-        QualifiedName(kind, bytesKey(0, 0), name),
-        QualifiedName(kind, bytesKey(0, 1), name)
-      )
-    }.toSet
-    if (names != expected) {
-      names.diff(expected).foreach(println)
-      println("=========")
-      expected.diff(names).foreach(println)
-    }
-    names should equal(expected)
-  }
-
   behavior of "TsdbFormat.getScans"
 
   it should "create single scan" in {
     val tsdbFormat = createTsdbFormat()
-    val scans = tsdbFormat.getScans(
-      metric = "test",
-      timeRange = (0, 1),
-      attributeValueFilters = Map(defaultShardAttributeName -> SingleValueName("value")),
-      idMap = sampleIdMap,
-      TsdbFormat.ValueTypes.SingleValueTypeStructureId,
-      NoDownsampling
-    )
-    scans.size should equal(1)
-    val scan = scans(0)
-    val downsamplingByte = 0.toByte
+    val downsampling = EnabledDownsampling(DownsamplingResolution.Minute5, AggregationType.Min)
+    val downsamplingByte = 0x12.toByte
     val metricId = Array[Byte](1, 0, 1)
-    val valueStructureTypeId = ValueTypes.SingleValueTypeStructureId
     val shardId = Array[Byte](4, 0, 1)
+    val valueStructureTypeId = ValueTypes.ListValueTypeStructureId
+    val rawQuery = RawQuery(
+      defaultGenerationIdBytes,
+      metricId,
+      shardId,
+      (0, 1),
+      Map(),
+      valueStructureTypeId,
+      downsampling
+    )
+    val scan = tsdbFormat.renderScan(rawQuery)
     val startTimestamp = Array[Byte](0, 0, 0, 0)
     val stopTimestamp = Array[Byte](0, 0, 0, 1)
     val rowPrefix =
@@ -292,107 +239,24 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
     scan.getStopRow should equal(rowPrefix ++ stopTimestamp)
   }
 
-  it should "create 2 scans over generations" in {
-    val prefixMapping = createGenerationIdMapping((0, MAX_TIMESPAN, 0), (MAX_TIMESPAN, MAX_TIMESPAN * 2, 1))
-    val tsdbFormat = createTsdbFormat(prefixMapping)
-    val idMap = sampleNamesToIdMapping.flatMap {
-      case ((kind, name), id) => Seq(
-        QualifiedName(kind, bytesKey(0, 0), name) -> id,
-        QualifiedName(kind, bytesKey(0, 1), name) -> id
-      )
-    }.toMap
-    val scans = tsdbFormat.getScans(
-      metric = "test",
-      timeRange = (0, MAX_TIMESPAN + 1),
-      attributeValueFilters = Map(defaultShardAttributeName -> SingleValueName("value")),
-      idMap = idMap,
-      TsdbFormat.ValueTypes.SingleValueTypeStructureId,
-      NoDownsampling
-    )
-    scans.size should equal(2)
-    scans(0).getStartRow.slice(0, uniqueIdGenerationWidth) should equal(Array[Byte](0, 0))
-    scans(1).getStartRow.slice(0, uniqueIdGenerationWidth) should equal(Array[Byte](0, 1))
-  }
-
-  it should "not create scan if not enough ids resolved" in {
-    val prefixMapping = createGenerationIdMapping((0, 3600, 0), (3600, 7200, 1))
-    val tsdbFormat = createTsdbFormat(prefixMapping)
-    val idMap = sampleNamesToIdMapping.map {
-      case ((kind, name), id) => QualifiedName(kind, bytesKey(0, 0), name) -> id
-    }.toMap
-    val scans = tsdbFormat.getScans(
-      metric = "test",
-      timeRange = (0, 4000),
-      attributeValueFilters = Map(defaultShardAttributeName -> SingleValueName("value")),
-      idMap = idMap,
-      TsdbFormat.ValueTypes.SingleValueTypeStructureId,
-      NoDownsampling
-    )
-    scans.size should equal(1)
-    scans(0).getStartRow.slice(0, uniqueIdGenerationWidth) should equal(Array[Byte](0, 0))
-  }
-
-  it should "create 2 scan over shards" in {
-    val tsdbFormat = createTsdbFormat()
-    val idMap = sampleIdMap.updated(
-      QualifiedName(ShardKind, defaultGenerationIdBytes, shardAttributeToShardName("name", "anotherValue")),
-      bytesKey(4, 0, 2)
-    )
-    val scans = tsdbFormat.getScans(
-      metric = "test",
-      timeRange = (0, 4000),
-      attributeValueFilters = Map(defaultShardAttributeName -> MultipleValueNames(Seq("value", "anotherValue"))),
-      idMap = idMap,
-      TsdbFormat.ValueTypes.SingleValueTypeStructureId,
-      NoDownsampling
-    )
-    scans.size should equal(2)
-    scans(0).getStartRow.slice(shardIdOffset, shardIdOffset + shardIdWidth) should equal(Array[Byte](4, 0, 1))
-    scans(1).getStartRow.slice(shardIdOffset, shardIdOffset + shardIdWidth) should equal(Array[Byte](4, 0, 2))
-  }
-
-  it should "include value_type_structure_id byte flag" in {
-    val tsdbFormat = createTsdbFormat()
-    val scans = tsdbFormat.getScans(
-      metric = "test",
-      timeRange = (0, 1),
-      attributeValueFilters = Map(defaultShardAttributeName -> SingleValueName("value")),
-      idMap = sampleIdMap,
-      TsdbFormat.ValueTypes.ListValueTypeStructureId,
-      NoDownsampling
-    )
-    scans.size should equal(1)
-    scans(0).getStartRow()(valueTypeIdOffset) should equal(ValueTypes.ListValueTypeStructureId)
-  }
-
-  it should "include downsampling byte flag" in {
-    val tsdbFormat = createTsdbFormat()
-    val scans = tsdbFormat.getScans(
-      metric = "test",
-      timeRange = (0, 1),
-      attributeValueFilters = Map(defaultShardAttributeName -> SingleValueName("value")),
-      idMap = sampleIdMap,
-      TsdbFormat.ValueTypes.ListValueTypeStructureId,
-      EnabledDownsampling(DownsamplingResolution.Minute5, AggregationType.Min)
-    )
-    scans.size should equal(1)
-    scans(0).getStartRow()(downsamplingQualByteOffset) should equal(0x12.toByte)
-  }
-
   it should "use correct timespan (downsampling case)" in {
     import DownsamplingResolution._
     val timestamp = timespanInSeconds(Day) - resolutionInSeconds(Day)
     val tsdbFormat = createTsdbFormat()
-    val scans = tsdbFormat.getScans(
-      metric = "test",
-      timeRange = (0, 1),
-      attributeValueFilters = Map(defaultShardAttributeName -> SingleValueName("value")),
-      idMap = sampleIdMap,
-      TsdbFormat.ValueTypes.ListValueTypeStructureId,
+    val metricId = Array[Byte](1, 0, 1)
+    val shardId = Array[Byte](4, 0, 1)
+    val valueStructureTypeId = ValueTypes.SingleValueTypeStructureId
+    val rawQuery = RawQuery(
+      defaultGenerationIdBytes,
+      metricId,
+      shardId,
+      (0, 1),
+      Map(),
+      valueStructureTypeId,
       EnabledDownsampling(Day, AggregationType.Min)
     )
-    scans.size should equal(1)
-    val row = scans(0).getStartRow()
+    val scan = tsdbFormat.renderScan(rawQuery)
+    val row = scan.getStartRow
     Bytes.toInt(row, baseTimeOffset) should equal(0)
   }
 

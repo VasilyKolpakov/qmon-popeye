@@ -14,12 +14,11 @@ import popeye.Logging
 import popeye.bench.BenchUtils
 import popeye.pipeline.MetricGenerator
 import popeye.proto.Message
-import popeye.storage.{PointsTranslation, ValueNameFilterCondition}
+import popeye.storage.{QueryTranslation, PointsTranslation, ValueNameFilterCondition}
 import PointsTranslation.SuccessfulTranslation
 import popeye.storage.hbase.TsdbFormat.NoDownsampling
 import popeye.util.{ARM, ZkConnect}
 import popeye.util.hbase.HBaseConfigured
-import popeye.storage.ValueNameFilterCondition
 
 import scala.collection.JavaConverters._
 import scala.concurrent.{ExecutionContext, Await, Future}
@@ -44,6 +43,7 @@ object PointsStorageBench extends Logging {
 
   val tsdbFormat = new TsdbFormat(timeRangeIdMapping, Set(shardAttr))
   val pointTranslation = new PointsTranslation(timeRangeIdMapping, Set(shardAttr))
+  val queryTranslation = new QueryTranslation(timeRangeIdMapping, Set(shardAttr))
 
   def main(args: Array[String]): Unit = {
     args(0) match {
@@ -77,6 +77,7 @@ object PointsStorageBench extends Logging {
         uniqueId,
         tsdbFormat,
         pointTranslation,
+        queryTranslation,
         timeRangeIdMapping,
         storageMetrics,
         readChunkSize = 1000
@@ -136,8 +137,7 @@ object PointsStorageBench extends Logging {
             generationId,
             NoDownsampling
           )
-          val result = tsdbFormat.createPointKeyValue(rawPoint, currentTime * 1000)
-          result.asInstanceOf[SuccessfulConversion].keyValue
+          tsdbFormat.createPointKeyValue(rawPoint, currentTime * 1000)
       }
       val pointsTable = createHTablePool("tsdb").getTable("tsdb")
       val puts = keyValues.map {
@@ -257,6 +257,7 @@ object PointsStorageBench extends Logging {
       uniqueId,
       tsdbFormat,
       pointTranslation,
+      queryTranslation,
       timeRangeIdMapping,
       pointsStorageMetrics,
       readChunkSize = 10

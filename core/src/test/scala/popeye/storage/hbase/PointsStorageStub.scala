@@ -10,7 +10,7 @@ import org.apache.hadoop.conf.Configuration
 import akka.testkit.TestActorRef
 import akka.actor.{Actor, ActorSystem, Props}
 import com.codahale.metrics.MetricRegistry
-import popeye.storage.PointsTranslation
+import popeye.storage.{QueryTranslation, PointsTranslation}
 import scala.concurrent.ExecutionContext
 
 object PointsStorageStub {
@@ -31,6 +31,7 @@ class PointsStorageStub(val generationIdMapping: GenerationIdMapping = PointsSto
   val hTablePool = createHTablePool(pointsTable)
   val uIdHTablePool = createHTablePool(uIdHTable)
   val pointsTranslation = new PointsTranslation(generationIdMapping, shardAttrs)
+  val queryTranslation = new QueryTranslation(generationIdMapping, shardAttrs)
 
   val uniqueIdStorage = {
     val metrics = new UniqueIdStorageMetrics("uid", metricRegistry)
@@ -53,6 +54,7 @@ class PointsStorageStub(val generationIdMapping: GenerationIdMapping = PointsSto
     uniqueId,
     tsdbFormat,
     pointsTranslation,
+    queryTranslation,
     generationIdMapping,
     pointsStorageMetrics,
     readChunkSize = 10

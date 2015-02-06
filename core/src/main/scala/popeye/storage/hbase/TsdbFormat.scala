@@ -3,7 +3,7 @@ package popeye.storage.hbase
 import popeye.paking.RowPacker.QualifierAndValue
 import popeye.paking.{RowPacker, ValueTypeDescriptor}
 import popeye.proto.Message
-import popeye.storage.{QualifiedId, QualifiedName}
+import popeye.storage.{RawQuery, QualifiedId, ValueIdFilterCondition}
 import popeye.storage.hbase.TsdbFormat._
 import DownsamplingResolution.DownsamplingResolution
 import AggregationType.AggregationType
@@ -12,34 +12,18 @@ import org.apache.hadoop.hbase.util.Bytes
 import popeye.{ListPoint, PointRope, Point, Logging}
 import scala.collection.JavaConverters._
 import org.apache.hadoop.hbase.client.{Scan, Result}
-import scala.collection.mutable
 import java.util.Arrays.copyOfRange
 import scala.collection.immutable.SortedMap
 import java.nio.ByteBuffer
 import java.nio.charset.Charset
 import org.apache.hadoop.hbase.filter.{CompareFilter, RowFilter, RegexStringComparator}
-import popeye.storage.{ValueNameFilterCondition, ValueIdFilterCondition}
-import popeye.storage.ValueNameFilterCondition.{AllValueNames, MultipleValueNames, SingleValueName}
-import popeye.storage.ValueIdFilterCondition.{SingleValueId, MultipleValueIds, AllValueIds}
-import popeye.proto.Message.Attribute
+import popeye.storage.TranslationConstants._
 
 object TsdbFormat {
 
   final val Encoding = Charset.forName("UTF-8")
 
   final val PointsFamily = "t".getBytes(Encoding)
-
-  final val MetricKind: String = "metric"
-  final val AttrNameKind: String = "tagk"
-  final val AttrValueKind: String = "tagv"
-  final val ShardKind: String = "shard"
-
-  final val UniqueIdMapping = Map[String, Short](
-    MetricKind -> 3.toShort,
-    AttrNameKind -> 3.toShort,
-    AttrValueKind -> 3.toShort,
-    ShardKind -> 3.toShort
-  )
   
   /** Number of LSBs in time_deltas reserved for flags.  */
   final val FLAG_BITS: Short = 4
@@ -445,20 +429,6 @@ object TsdbFormat {
     ROW_REGEX_FILTER_ENCODING.decode(byteBuffer).toString
   }
 
-  def shardAttributeToShardName(attrName: String, attrValue: String): String = {
-    mutable.StringBuilder.newBuilder
-      .append('{')
-      .append(attrName)
-      .append(": ")
-      .append(attrValue)
-      .append('}')
-      .append('_')
-      .append(attrName.length)
-      .append('_')
-      .append(attrValue.length)
-      .toString()
-  }
-
   def parseSingleValueRowResult(result: Result): ParsedSingleValueRowResult = {
     val row = result.getRow
     require(row(valueTypeIdOffset) == ValueTypes.SingleValueTypeStructureId)
@@ -582,15 +552,6 @@ case class ParsedSingleValueRowResult(timeseriesId: TimeseriesId, points: PointR
 
 case class ParsedListValueRowResult(timeseriesId: TimeseriesId, lists: Seq[ListPoint])
 
-sealed trait ConversionResult
-
-case class SuccessfulConversion(keyValue: KeyValue) extends ConversionResult
-
-case class FailedConversion(exception: Exception) extends ConversionResult
-
-case object IdCacheMiss extends ConversionResult
-
-
 class TsdbFormat(timeRangeIdMapping: GenerationIdMapping, shardAttributeNames: Set[String]) extends Logging {
 
   import TsdbFormat._
@@ -631,26 +592,6 @@ class TsdbFormat(timeRangeIdMapping: GenerationIdMapping, shardAttributeNames: S
     )
   }
 
-  def getScanNames(metric: String,
-                   timeRange: (Int, Int),
-                   attributeValueFilters: Map[String, ValueNameFilterCondition]): Set[QualifiedName] = {
-    val (startTime, stopTime) = timeRange
-    val generationId = getTimeRanges(startTime, stopTime).map(_.id)
-    val shardNames = getShardNames(attributeValueFilters)
-    generationId.flatMap {
-      generationId =>
-        val genIdBytes = new BytesKey(Bytes.toBytes(generationId))
-        val metricName = QualifiedName(MetricKind, genIdBytes, metric)
-        val shardQNames = shardNames.map(name => QualifiedName(ShardKind, genIdBytes, name))
-        val attrNames = attributeValueFilters.keys.map(name => QualifiedName(AttrNameKind, genIdBytes, name)).toSeq
-        val attrValues = attributeValueFilters.values.collect {
-          case SingleValueName(name) => Seq(name)
-          case MultipleValueNames(names) => names
-        }.flatten.map(name => QualifiedName(AttrValueKind, genIdBytes, name)).toSeq
-        metricName +: (shardQNames ++ attrNames ++ attrValues)
-    }.toSet
-  }
-
   private def getRowFilerOption(attributePredicates: Map[BytesKey, ValueIdFilterCondition]): Option[RowFilter] = {
     if (attributePredicates.nonEmpty) {
       val rowRegex = createRowRegexp(
@@ -667,164 +608,24 @@ class TsdbFormat(timeRangeIdMapping: GenerationIdMapping, shardAttributeNames: S
     }
   }
 
-  def getScans(metric: String,
-               timeRange: (Int, Int),
-               attributeValueFilters: Map[String, ValueNameFilterCondition],
-               idMap: Map[QualifiedName, BytesKey],
-               valueTypeStructureId: Byte,
-               downsampling: Downsampling): Seq[Scan] = {
-    val (startTime, stopTime) = timeRange
-    val ranges = getTimeRanges(startTime, stopTime)
-    val shardNames = getShardNames(attributeValueFilters)
-    info(s"getScans metric: $metric, shard names: $shardNames, ranges: $ranges")
-    ranges.map {
-      range =>
-        val generationId = range.id
-        val genIdBytes = new BytesKey(Bytes.toBytes(generationId))
-        val shardQNames = shardNames.map(name => QualifiedName(ShardKind, genIdBytes, name))
-        val metricQName = QualifiedName(MetricKind, genIdBytes, metric)
-        val metricIdOption = idMap.get(metricQName)
-        info(f"resolving metric id: $metricQName -> $metricIdOption")
-        val shardIdOptions = shardQNames.map(idMap.get)
-        info(f"resolving shard ids: ${ (shardQNames zip shardIdOptions).toMap }")
-        val shardIds = shardIdOptions.collect { case Some(id) => id }
-        for {
-          metricId <- metricIdOption if shardIds.nonEmpty
-          attrIdFilters <- covertAttrNamesToIds(genIdBytes, attributeValueFilters, idMap)
-        } yield {
-          getShardScans(
-            genIdBytes,
-            metricId,
-            shardIds,
-            (range.start, range.stop),
-            attrIdFilters,
-            valueTypeStructureId,
-            downsampling
-          )
-        }
-    }.collect { case Some(scans) => scans }.flatten
-  }
-
-  private def getShardNames(allFilters: Map[String, ValueNameFilterCondition]): Seq[String] = {
-    val shardAttrFilterNames = allFilters.keys.filter(name => shardAttributeNames.contains(name))
-    require(
-      shardAttrFilterNames.size == 1,
-      f"scan filters must have exactly one shard attribute; shard attributes: $shardAttributeNames"
-    )
-    val shardAttrName = shardAttrFilterNames.head
-    val shardAttrValues = allFilters(shardAttrName) match {
-      case SingleValueName(name) => Seq(name)
-      case MultipleValueNames(names) => names
-      case AllValueNames => throw new IllegalArgumentException("'*' filter is not supported for shard attributes")
-    }
-    shardAttrValues.map {
-      shardAttrValue => shardAttributeToShardName(shardAttrName, shardAttrValue)
-    }
-  }
-
-  private def covertAttrNamesToIds(generationId: BytesKey,
-                                   attributes: Map[String, ValueNameFilterCondition],
-                                   idMap: Map[QualifiedName, BytesKey]
-                                    ): Option[Map[BytesKey, ValueIdFilterCondition]] = {
-    val (attrIdOptions, attrIdFiltersOptions) = attributes.toSeq.map {
-      case (attrName, valueFilter) =>
-        val valueIdFilterOption = convertAttrValuesToIds(generationId, valueFilter, idMap)
-        val qName = QualifiedName(AttrNameKind, generationId, attrName)
-        val nameIdOption = idMap.get(qName)
-        info(f"resolving $qName -> $nameIdOption")
-        (nameIdOption, valueIdFilterOption)
-    }.unzip
-    if (attrIdOptions.exists(_.isEmpty) || attrIdFiltersOptions.exists(_.isEmpty)) {
-      None
-    } else {
-      val ids = attrIdOptions.map(_.get)
-      val filters = attrIdFiltersOptions.map(_.get)
-      Some((ids zip filters).toMap)
-    }
-  }
-
-  private def convertAttrValuesToIds(generationId: BytesKey,
-                                     value: ValueNameFilterCondition,
-                                     idMap: Map[QualifiedName, BytesKey]): Option[ValueIdFilterCondition] = {
-    value match {
-      case SingleValueName(name) =>
-        val qName = QualifiedName(AttrValueKind, generationId, name)
-        val maybeId = idMap.get(qName).map {
-          id => SingleValueId(id)
-        }
-        info(f"resolving single value filter: $qName -> $maybeId")
-        maybeId
-      case MultipleValueNames(names) =>
-        val qNames = names.map(name => QualifiedName(AttrValueKind, generationId, name))
-        val idOptions = qNames.map(idMap.get)
-        info(f"resolving multiple value filter: ${ qNames.zip(idOptions).toMap }")
-        if (idOptions.exists(_.isDefined)) {
-          val ids = idOptions.collect { case Some(id) => id }
-          Some(MultipleValueIds(ids))
-        } else {
-          None
-        }
-      case AllValueNames => Some(AllValueIds)
-    }
-  }
-
-  private def getShardScans(generationId: BytesKey,
-                            metricId: BytesKey,
-                            shardIds: Seq[BytesKey],
-                            timeRange: (Int, Int),
-                            attributePredicates: Map[BytesKey, ValueIdFilterCondition],
-                            valueTypeStructureId: Byte,
-                            downsampling: Downsampling): Seq[Scan] = {
+  def renderScan(rawQuery: RawQuery) = {
+    import rawQuery._
     val (startTime, endTime) = timeRange
     val baseStartTime = startTime - (startTime % downsampling.rowTimespanInSeconds)
     val downsamplingByte = renderDownsamplingByte(downsampling)
     val rowPrefix = (generationId.bytes :+ downsamplingByte) ++ metricId.bytes :+ valueTypeStructureId
     val startTimeBytes = Bytes.toBytes(baseStartTime)
     val stopTimeBytes = Bytes.toBytes(endTime)
-    for (shardId <- shardIds) yield {
-      val startRow = rowPrefix ++ shardId.bytes ++ startTimeBytes
-      val stopRow = rowPrefix ++ shardId.bytes ++ stopTimeBytes
-      val scan = new Scan()
-      scan.setStartRow(startRow)
-      scan.setStopRow(stopRow)
-      scan.addFamily(PointsFamily)
-      getRowFilerOption(attributePredicates).foreach {
-        filter => scan.setFilter(filter)
-      }
-      scan
+    val startRow = rowPrefix ++ shardId.bytes ++ startTimeBytes
+    val stopRow = rowPrefix ++ shardId.bytes ++ stopTimeBytes
+    val scan = new Scan()
+    scan.setStartRow(startRow)
+    scan.setStopRow(stopRow)
+    scan.addFamily(PointsFamily)
+    getRowFilerOption(attributePredicates).foreach {
+      filter => scan.setFilter(filter)
     }
-  }
-
-  private def getTimeRanges(startTime: Int, stopTime: Int) = {
-    val baseStartTime = maxTimespanFloor(startTime)
-    val baseStopTime = maxTimespanFloor(stopTime)
-    val ranges = timeRangeIdMapping.backwardIterator(baseStopTime)
-      .takeWhile(_.stop > baseStartTime)
-      .toVector
-      .reverse
-    if (ranges.size == 1) {
-      Vector(ranges.head.copy(start = startTime, stop = stopTime))
-    } else {
-      ranges
-        .updated(0, ranges(0).copy(start = startTime))
-        .updated(ranges.length - 1, ranges(ranges.length - 1).copy(stop = stopTime))
-    }
-  }
-
-  private def getGenerationId(point: Message.Point, currentTimeSeconds: Int): BytesKey = {
-    val pointBaseTime = maxTimespanFloor(point.getTimestamp.toInt)
-    val currentBaseTime = maxTimespanFloor(currentTimeSeconds)
-    val id = timeRangeIdMapping.getGenerationId(pointBaseTime, currentBaseTime)
-    val idBytes = new BytesKey(Bytes.toBytes(id))
-    require(
-      idBytes.bytes.length == uniqueIdGenerationWidth,
-      f"TsdbFormat depends on generation id width: ${ idBytes.bytes.length } not equal to ${ uniqueIdGenerationWidth }"
-    )
-    idBytes
-  }
-
-  private def maxTimespanFloor(timestamp: Int) = {
-    timestamp - (timestamp % MAX_TIMESPAN)
+    scan
   }
 
   private def mkKeyValue(generationId: BytesKey,

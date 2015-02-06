@@ -5,6 +5,7 @@ import org.scalatest.{Matchers, FlatSpec}
 import popeye.proto.Message
 import popeye.storage.hbase._
 import popeye.storage.hbase.TsdbFormat._
+import popeye.storage.TranslationConstants._
 import popeye.test.PopeyeTestUtils._
 import scala.collection.JavaConverters._
 import scala.collection.immutable.SortedMap

@@ -12,7 +12,7 @@ import popeye.storage.hbase.UniqueIdProtocol.FindName
 import popeye.storage.hbase.UniqueIdProtocol.Race
 import popeye.storage.hbase.UniqueIdProtocol.Resolved
 import popeye.storage.hbase.UniqueIdProtocol.ResolutionFailed
-import popeye.storage.{QualifiedId, QualifiedName, ResolvedName}
+import popeye.storage.{TranslationConstants, QualifiedId, QualifiedName, ResolvedName}
 import java.util.NoSuchElementException
 
 /**
@@ -24,9 +24,9 @@ class UniqueIdSpec extends AkkaTestKitSpec("uniqueid") with Logging {
 
   val metric = "test.metric.1"
   val defaultGenerationId: BytesKey = new BytesKey(Array[Byte](0, 0))
-  val qname = QualifiedName(TsdbFormat.MetricKind, defaultGenerationId, metric)
+  val qname = QualifiedName(TranslationConstants.MetricKind, defaultGenerationId, metric)
   val metricId = id("\01\02\03")
-  val qId = QualifiedId(TsdbFormat.MetricKind, defaultGenerationId, metricId)
+  val qId = QualifiedId(TranslationConstants.MetricKind, defaultGenerationId, metricId)
   implicit val timeout: FiniteDuration = 500 seconds
 
   behavior of "id->name"

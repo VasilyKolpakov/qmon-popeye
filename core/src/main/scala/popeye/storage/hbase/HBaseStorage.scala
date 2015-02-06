@@ -57,6 +57,7 @@ class HBaseStorage(tableName: String,
                    uniqueId: UniqueId,
                    tsdbFormat: TsdbFormat,
                    pointsTranslation: PointsTranslation,
+                   queryTranslation: QueryTranslation,
                    generationIdMapping: GenerationIdMapping,
                    metrics: HBaseStorageMetrics,
                    resolveTimeout: Duration = 15 seconds,
@@ -138,7 +139,7 @@ class HBaseStorage(tableName: String,
                            valueTypeStructureId: Byte,
                            downsampling: Downsampling)
                           (implicit eCtx: ExecutionContext): AsyncIterator[Array[Result]] = {
-    val scanNames = tsdbFormat.getScanNames(metric, timeRange, attributes)
+    val scanNames = queryTranslation.getQueryNames(metric, timeRange, attributes)
     val scanNameIdPairsFuture = Future.traverse(scanNames) {
       qName =>
         uniqueId.resolveIdByName(qName, create = false)(resolveTimeout)
@@ -149,7 +150,7 @@ class HBaseStorage(tableName: String,
       scanNameIdPairs <- scanNameIdPairsFuture
     } yield {
       val scanNameToIdMap = scanNameIdPairs.collect { case Some(x) => x }.toMap
-      val scans = tsdbFormat.getScans(
+      val rawQueries = queryTranslation.getRawQueries(
         metric,
         timeRange,
         attributes,
@@ -157,6 +158,7 @@ class HBaseStorage(tableName: String,
         valueTypeStructureId,
         downsampling
       )
+      val scans = rawQueries.map(tsdbFormat.renderScan)
       val scansString = scans.map {
         scan =>
           val startRow = Bytes.toStringBinary(scan.getStartRow)
@@ -214,7 +216,7 @@ class HBaseStorage(tableName: String,
   }
 
   def ping(): Unit = {
-    val qName = QualifiedName(TsdbFormat.MetricKind, new BytesKey(Array[Byte](0, 0)), "_.ping")
+    val qName = QualifiedName(TranslationConstants.MetricKind, new BytesKey(Array[Byte](0, 0)), "_.ping")
     val future = uniqueId.resolveIdByName(qName, create = true)(resolveTimeout)
     Await.result(future, resolveTimeout)
   }

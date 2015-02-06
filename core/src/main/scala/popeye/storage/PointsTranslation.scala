@@ -6,6 +6,7 @@ import popeye.proto.Message.{Attribute, Point}
 import popeye.proto.Message.Point.ValueType._
 import popeye.storage.PointsTranslation.TranslationResult
 import popeye.storage.hbase.TsdbFormat._
+import popeye.storage.TranslationConstants._
 import popeye.storage.hbase._
 
 import scala.collection.JavaConverters._
@@ -14,25 +15,11 @@ import scala.collection.mutable
 
 object PointsTranslation {
 
-  trait TranslationResult
+  sealed trait TranslationResult
 
   case class SuccessfulTranslation(rawPoint: RawPointT) extends TranslationResult
 
   case object IdCacheMiss extends TranslationResult
-
-  def shardAttributeToShardName(attrName: String, attrValue: String): String = {
-    mutable.StringBuilder.newBuilder
-      .append('{')
-      .append(attrName)
-      .append(": ")
-      .append(attrValue)
-      .append('}')
-      .append('_')
-      .append(attrName.length)
-      .append('_')
-      .append(attrValue.length)
-      .toString()
-  }
 
 }
 

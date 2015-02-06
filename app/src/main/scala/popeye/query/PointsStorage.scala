@@ -4,7 +4,7 @@ import com.codahale.metrics.MetricRegistry
 import org.apache.hadoop.hbase.util.Bytes
 import popeye.{Logging, Instrumented, PointRope}
 import popeye.storage._
-import popeye.storage.hbase.TsdbFormat.{EnabledDownsampling, DownsamplingResolution, Downsampling, NoDownsampling}
+import popeye.storage.TranslationConstants._
 import scala.concurrent.{ExecutionContext, Future}
 import popeye.storage.hbase._
 import popeye.query.PointsStorage.NameType.NameType
@@ -80,9 +80,9 @@ object PointsStorage {
 
       import NameType._
       val kind = nameType match {
-        case MetricType => TsdbFormat.MetricKind
-        case AttributeNameType => TsdbFormat.AttrNameKind
-        case AttributeValueType => TsdbFormat.AttrValueKind
+        case MetricType => MetricKind
+        case AttributeNameType => AttrNameKind
+        case AttributeValueType => AttrValueKind
       }
       val currentTimeInSeconds = System.currentTimeMillis() / 1000
       val currentBaseTime = currentTimeInSeconds - currentTimeInSeconds % TsdbFormat.MAX_TIMESPAN
