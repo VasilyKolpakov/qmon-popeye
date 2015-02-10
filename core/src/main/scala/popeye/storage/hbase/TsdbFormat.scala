@@ -509,26 +509,7 @@ case class TimeseriesId(generationId: BytesKey,
                         metricId: BytesKey,
                         valueTypeId: Byte,
                         shardId: BytesKey,
-                        attributeIds: SortedMap[BytesKey, BytesKey]) {
-  def getMetricName(idMap: Map[QualifiedId, String]) = idMap(QualifiedId(MetricKind, generationId, metricId))
-
-  def getAttributes(idMap: Map[QualifiedId, String]) = {
-    attributeIds.map {
-      case (nameId, valueId) =>
-        val name = idMap(QualifiedId(AttrNameKind, generationId, nameId))
-        val value = idMap(QualifiedId(AttrValueKind, generationId, valueId))
-        (name, value)
-    }
-  }
-
-  def getUniqueIds: Iterable[QualifiedId] = {
-    val metricQId = QualifiedId(MetricKind, generationId, metricId)
-    val shardQId = QualifiedId(ShardKind, generationId, shardId)
-    val attrNameQIds = attributeIds.keys.map(id => QualifiedId(AttrNameKind, generationId, id))
-    val attrValueQIds = attributeIds.values.map(id => QualifiedId(AttrValueKind, generationId, id))
-    Iterable(metricQId, shardQId).view ++ attrNameQIds ++ attrValueQIds
-  }
-}
+                        attributeIds: SortedMap[BytesKey, BytesKey])
 
 sealed trait RawPointT {
   def timeseriesId: TimeseriesId

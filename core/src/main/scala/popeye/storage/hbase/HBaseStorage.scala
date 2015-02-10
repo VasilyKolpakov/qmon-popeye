@@ -89,8 +89,8 @@ class HBaseStorage(tableName: String,
 
     def resultsToPointsSequences(results: Array[Result]): Future[PointsSeriesMap] = {
       val decodingTimer = metrics.pointsDecodingTime.timerContext()
-      val rowResults = results.map(TsdbFormat.parseSingleValueRowResult)
-      val ids = rowResults.flatMap(rr => rr.timeseriesId.getUniqueIds).toSet
+      val rowResults = results.to[mutable.IndexedSeq].map(TsdbFormat.parseSingleValueRowResult)
+      val ids = rowResults.flatMap(rr => ResultsTranslation.getUniqueIds(rr.timeseriesId)).toSet
       val idNamePairsFuture = Future.traverse(ids) {
         case qId =>
           uniqueId.resolveNameById(qId)(resolveTimeout).map(name => (qId, name))
@@ -119,7 +119,7 @@ class HBaseStorage(tableName: String,
     )
     def resultsToListPointsTimeseries(results: Array[Result]): Future[Seq[ListPointTimeseries]] = {
       val rowResults = results.map(TsdbFormat.parseListValueRowResult)
-      val ids = rowResults.flatMap(rr => rr.timeseriesId.getUniqueIds).toSet
+      val ids = rowResults.flatMap(rr => ResultsTranslation.getUniqueIds(rr.timeseriesId)).toSet
       val idNamePairsFuture = Future.traverse(ids) {
         case qId =>
           uniqueId.resolveNameById(qId)(resolveTimeout).map(name => (qId, name))
@@ -178,13 +178,13 @@ class HBaseStorage(tableName: String,
     AsyncIterator.unwrapFuture(resutlsIteratorFuture)
   }
 
-  private def toPointSequencesMap(rows: Array[ParsedSingleValueRowResult],
+  private def toPointSequencesMap(rows: mutable.IndexedSeq[ParsedSingleValueRowResult],
                                   timeRange: (Int, Int),
                                   idMap: Map[QualifiedId, String]): Map[PointAttributes, PointRope] = {
     val (startTime, endTime) = timeRange
-    rows.groupBy(row => row.timeseriesId.getAttributes(idMap)).mapValues {
+    rows.groupBy(row => ResultsTranslation.getAttributes(row.timeseriesId, idMap)).mapValues {
       rowsArray =>
-        val pointsSeq = rowsArray.to[mutable.IndexedSeq].map(_.points)
+        val pointsSeq = rowsArray.map(_.points)
         val firstRow = pointsSeq(0)
         pointsSeq(0) = firstRow.filter(point => point.timestamp >= startTime)
         val lastIndex = pointsSeq.length - 1
@@ -210,7 +210,7 @@ class HBaseStorage(tableName: String,
     }
     serieses.map {
       case (timeseriesId, lists) =>
-        val tags = timeseriesId.getAttributes(idMap)
+        val tags = ResultsTranslation.getAttributes(timeseriesId, idMap)
         ListPointTimeseries(tags, lists)
     }.toSeq
   }
@@ -392,7 +392,7 @@ class HBaseStorage(tableName: String,
     val (delta, isFloat) = TsdbFormat.ValueTypes.parseQualifier(qualifierBytes)
     val value = TsdbFormat.ValueTypes.parseSingleValue(valueBytes, isFloat)
     val timestamp = baseTime + delta
-    val rowIds = timeseriesId.getUniqueIds
+    val rowIds = ResultsTranslation.getUniqueIds(timeseriesId)
     val idNamePairsFuture = Future.traverse(rowIds) {
       case qId =>
         uniqueId.resolveNameById(qId)(resolveTimeout).map {
@@ -401,8 +401,8 @@ class HBaseStorage(tableName: String,
     }
     idNamePairsFuture.map {
       idNamePairs =>
-        val metricName = timeseriesId.getMetricName(idNamePairs.toMap)
-        val attrs = timeseriesId.getAttributes(idNamePairs.toMap)
+        val metricName = ResultsTranslation.getMetricName(timeseriesId, idNamePairs.toMap)
+        val attrs = ResultsTranslation.getAttributes(timeseriesId, idNamePairs.toMap)
         val builder = Message.Point.newBuilder()
         builder.setTimestamp(timestamp)
         builder.setMetric(metricName)
