@@ -534,7 +534,7 @@ class TsdbFormat(timeRangeIdMapping: GenerationIdMapping, shardAttributeNames: S
     val (startTime, endTime) = timeRange
     val baseStartTime = startTime - (startTime % downsampling.rowTimespanInSeconds)
     val downsamplingByte = renderDownsamplingByte(downsampling)
-    val rowPrefix = (generationId.bytes :+ downsamplingByte) ++ metricId.bytes :+ valueTypeStructureId
+    val rowPrefix = (generationId.bytes :+ downsamplingByte) ++ metricId.bytes :+ renderValueTypeByte(valueType)
     val startTimeBytes = Bytes.toBytes(baseStartTime)
     val stopTimeBytes = Bytes.toBytes(endTime)
     val startRow = rowPrefix ++ shardId.bytes ++ startTimeBytes

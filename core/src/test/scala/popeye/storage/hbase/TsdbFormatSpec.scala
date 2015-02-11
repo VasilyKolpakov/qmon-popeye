@@ -217,14 +217,13 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
     val downsamplingByte = 0x12.toByte
     val metricId = Array[Byte](1, 0, 1)
     val shardId = Array[Byte](4, 0, 1)
-    val valueStructureTypeId = ValueTypes.ListValueTypeStructureId
     val rawQuery = RawQuery(
       defaultGenerationIdBytes,
       metricId,
       shardId,
       (0, 1),
       Map(),
-      valueStructureTypeId,
+      ListValueType,
       downsampling
     )
     val scan = tsdbFormat.renderScan(rawQuery)
@@ -234,7 +233,7 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
       defaultGenerationIdBytes.bytes ++
         Array(downsamplingByte) ++
         metricId ++
-        Array(valueStructureTypeId) ++
+        Array(ValueTypes.ListValueTypeStructureId) ++
         shardId
     scan.getStartRow should equal(rowPrefix ++ startTimestamp)
     scan.getStopRow should equal(rowPrefix ++ stopTimestamp)
@@ -246,14 +245,13 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
     val tsdbFormat = createTsdbFormat()
     val metricId = Array[Byte](1, 0, 1)
     val shardId = Array[Byte](4, 0, 1)
-    val valueStructureTypeId = ValueTypes.SingleValueTypeStructureId
     val rawQuery = RawQuery(
       defaultGenerationIdBytes,
       metricId,
       shardId,
       (0, 1),
       Map(),
-      valueStructureTypeId,
+      SingleValueType,
       EnabledDownsampling(Day, AggregationType.Min)
     )
     val scan = tsdbFormat.renderScan(rawQuery)

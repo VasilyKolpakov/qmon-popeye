@@ -85,7 +85,7 @@ class QueryTranslationSpec extends FlatSpec with Matchers {
       timeRange = (0, MAX_TIMESPAN + 1),
       attributeValueFilters = Map(defaultShardAttributeName -> SingleValueName("value")),
       idMap = idMap,
-      TsdbFormat.ValueTypes.SingleValueTypeStructureId,
+      SingleValueType,
       NoDownsampling
     )
     rawQueries.size should equal(2)
@@ -104,7 +104,7 @@ class QueryTranslationSpec extends FlatSpec with Matchers {
       timeRange = (0, 4000),
       attributeValueFilters = Map(defaultShardAttributeName -> SingleValueName("value")),
       idMap = idMap,
-      TsdbFormat.ValueTypes.SingleValueTypeStructureId,
+      SingleValueType,
       NoDownsampling
     )
     rawQueries.size should equal(1)
@@ -122,7 +122,7 @@ class QueryTranslationSpec extends FlatSpec with Matchers {
       timeRange = (0, 4000),
       attributeValueFilters = Map(defaultShardAttributeName -> MultipleValueNames(Seq("value", "anotherValue"))),
       idMap = idMap,
-      TsdbFormat.ValueTypes.SingleValueTypeStructureId,
+      SingleValueType,
       NoDownsampling
     )
     rawQueries.size should equal(2)
@@ -130,18 +130,18 @@ class QueryTranslationSpec extends FlatSpec with Matchers {
     rawQueries(1).shardId should equal(new BytesKey(Array[Byte](4, 0, 2)))
   }
 
-  it should "be aware of value_type_structure_id byte flag" in {
+  it should "be aware of value type" in {
     val queryTranslation = createQueryTranslation()
-    val scans = queryTranslation.getRawQueries(
+    val rawQueries = queryTranslation.getRawQueries(
       metric = "test",
       timeRange = (0, 1),
       attributeValueFilters = Map(defaultShardAttributeName -> SingleValueName("value")),
       idMap = sampleIdMap,
-      TsdbFormat.ValueTypes.ListValueTypeStructureId,
+      ListValueType,
       NoDownsampling
     )
-    scans.size should equal(1)
-    scans(0).valueTypeStructureId should equal(ValueTypes.ListValueTypeStructureId)
+    rawQueries.size should equal(1)
+    rawQueries(0).valueType should equal(ListValueType)
   }
 
   it should "be aware of downsampling byte flag" in {
@@ -152,7 +152,7 @@ class QueryTranslationSpec extends FlatSpec with Matchers {
       timeRange = (0, 1),
       attributeValueFilters = Map(defaultShardAttributeName -> SingleValueName("value")),
       idMap = sampleIdMap,
-      TsdbFormat.ValueTypes.ListValueTypeStructureId,
+      ListValueType,
       downsampling
     )
     rawQueries.size should equal(1)

@@ -7,5 +7,5 @@ case class RawQuery(generationId: BytesKey,
                     shardId: BytesKey,
                     timeRange: (Int, Int),
                     attributePredicates: Map[BytesKey, ValueIdFilterCondition],
-                    valueTypeStructureId: Byte,
+                    valueType: ValueType,
                     downsampling: Downsampling)

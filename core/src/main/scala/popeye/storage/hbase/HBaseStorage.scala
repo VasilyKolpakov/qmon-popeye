@@ -83,7 +83,7 @@ class HBaseStorage(tableName: String,
       metric,
       timeRange,
       attributes,
-      TsdbFormat.ValueTypes.SingleValueTypeStructureId,
+      SingleValueType,
       downsampling
     )
 
@@ -114,7 +114,7 @@ class HBaseStorage(tableName: String,
       metric,
       timeRange,
       attributes,
-      TsdbFormat.ValueTypes.ListValueTypeStructureId,
+      ListValueType,
       NoDownsampling
     )
     def resultsToListPointsTimeseries(results: Array[Result]): Future[Seq[ListPointTimeseries]] = {
@@ -136,7 +136,7 @@ class HBaseStorage(tableName: String,
   private def resolveQuery(metric: String,
                            timeRange: (Int, Int),
                            attributes: Map[String, ValueNameFilterCondition],
-                           valueTypeStructureId: Byte,
+                           valueType: ValueType,
                            downsampling: Downsampling)
                           (implicit eCtx: ExecutionContext): AsyncIterator[Array[Result]] = {
     val scanNames = queryTranslation.getQueryNames(metric, timeRange, attributes)
@@ -155,7 +155,7 @@ class HBaseStorage(tableName: String,
         timeRange,
         attributes,
         scanNameToIdMap,
-        valueTypeStructureId,
+        valueType,
         downsampling
       )
       val scans = rawQueries.map(tsdbFormat.renderScan)

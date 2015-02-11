@@ -15,7 +15,7 @@ class QueryTranslation(timeRangeIdMapping: GenerationIdMapping, shardAttributeNa
                     timeRange: (Int, Int),
                     attributeValueFilters: Map[String, ValueNameFilterCondition],
                     idMap: Map[QualifiedName, BytesKey],
-                    valueTypeStructureId: Byte,
+                    valueType: ValueType,
                     downsampling: Downsampling): Seq[RawQuery] = {
     val (startTime, stopTime) = timeRange
     val ranges = getGenerationRanges(startTime, stopTime)
@@ -44,7 +44,7 @@ class QueryTranslation(timeRangeIdMapping: GenerationIdMapping, shardAttributeNa
                 shardId,
                 timeRange,
                 attrIdFilters,
-                valueTypeStructureId,
+                valueType,
                 downsampling
               )
           }
