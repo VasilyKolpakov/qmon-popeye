@@ -14,7 +14,7 @@ import popeye.bench.BenchUtils
 import popeye.pipeline.MetricGenerator
 import popeye.storage.PointsTranslation
 import PointsTranslation.SuccessfulTranslation
-import popeye.storage.hbase.TsdbFormat.NoDownsampling
+import popeye.storage.NoDownsampling
 import popeye.test.PopeyeTestUtils
 
 import scala.concurrent.Await

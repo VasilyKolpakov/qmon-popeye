@@ -5,7 +5,7 @@ import org.codehaus.jackson.JsonNode
 import org.codehaus.jackson.node.{ObjectNode, JsonNodeFactory}
 import popeye.storage.{PointsGroups, PointAttributes, ValueNameFilterCondition}
 import popeye.storage.ValueNameFilterCondition.{SingleValueName, MultipleValueNames, AllValueNames}
-import popeye.storage.hbase.TsdbFormat
+import popeye.storage.AggregationType
 import scala.collection.JavaConverters._
 import akka.actor.{Props, ActorRef, ActorSystem, Actor}
 import org.codehaus.jackson.map.ObjectMapper
@@ -267,7 +267,7 @@ object OpenTSDB2HttpApiServer {
   )
 
   val aggregatorNameToTypeMap = {
-    import TsdbFormat.AggregationType._
+    import AggregationType._
     Map[String, AggregationType](
       "sum" -> Sum,
       "min" -> Min,

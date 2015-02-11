@@ -1,7 +1,6 @@
 package popeye.storage
 
 import popeye.PointRope
-import popeye.storage.hbase.TsdbFormat.Downsampling
 
 import scala.concurrent.{Future, ExecutionContext}
 

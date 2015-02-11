@@ -2,18 +2,14 @@ package popeye.rollup
 
 import org.apache.hadoop.hbase.Cell
 import popeye.bench.BenchUtils
-import popeye.clients.TsPoint
-import popeye.inttesting.TestDataUtils
-import popeye.proto.Message
 import popeye.rollup.RollupMapperEngine.RollupStrategy
-import popeye.storage.hbase.TsdbFormat.NoDownsampling
-import popeye.storage.hbase._
+import popeye.storage.{SingleValueType, RawPoint, NoDownsampling, TimeseriesId}
+import popeye.storage.hbase.{BytesKey, TsdbFormat, StartTimeAndPeriod, TsdbFormatConfig}
 import scala.collection.immutable
 import scala.collection.JavaConverters._
 
 import org.apache.hadoop.hbase.client.Result
 
-import scala.collection.SortedMap
 import scala.util.Random
 
 object RollupBench {
@@ -59,7 +55,7 @@ object RollupBench {
         generationId = new BytesKey(Array[Byte](0, 1)),
         downsampling = NoDownsampling,
         metricId = new BytesKey(metric),
-        valueTypeId = TsdbFormat.ValueTypes.SingleValueTypeStructureId,
+        valueType = SingleValueType,
         shardId = shard,
         attributeIds = immutable.SortedMap(
           new BytesKey(periodAttrName) -> new BytesKey(period),

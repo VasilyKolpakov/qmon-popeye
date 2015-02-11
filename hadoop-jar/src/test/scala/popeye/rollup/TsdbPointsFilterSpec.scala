@@ -8,7 +8,7 @@ import org.scalatest.Matchers
 import popeye.proto.Message
 import popeye.proto.Message.Point
 import popeye.storage.PointsTranslation.SuccessfulTranslation
-import popeye.storage.QualifiedName
+import popeye.storage._
 import popeye.storage.hbase.TsdbFormat.ValueTypes._
 import popeye.storage.hbase._
 import popeye.test.{AkkaTestKitSpec, PopeyeTestUtils}
@@ -244,7 +244,7 @@ class TsdbPointsFilterSpec extends AkkaTestKitSpec("points-storage") with Matche
     val scan = new Scan
     scan.setFilter(
       createPointsFilter(
-        downsamplingResolutionId = DownsamplingResolution.getId(resolution),
+        downsamplingResolutionId = TsdbFormat.getDownsamplingResolutionId(resolution),
         baseTimeStartSeconds = 0,
         baseTimeStopSeconds = MAX_TIMESPAN
       )

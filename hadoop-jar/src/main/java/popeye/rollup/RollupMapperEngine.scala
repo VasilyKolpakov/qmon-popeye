@@ -5,9 +5,8 @@ import org.apache.hadoop.hbase.KeyValue
 import org.apache.hadoop.hbase.client.Result
 import org.apache.hadoop.hbase.io.ImmutableBytesWritable
 import popeye.rollup.RollupMapperEngine.RollupStrategy
-import popeye.storage.hbase.TsdbFormat.DownsamplingResolution.DownsamplingResolution
-import popeye.storage.hbase.TsdbFormat.EnabledDownsampling
-import popeye.storage.hbase._
+import popeye.storage._
+import popeye.storage.hbase.{TsdbFormat, TsdbFormatConfig}
 import popeye.{Logging, PointRope}
 
 import scala.collection.JavaConverters._
@@ -25,6 +24,8 @@ case class DownsamplingPoint(timestamp: Int, value: Float, downsampling: Enabled
 
 object RollupMapperEngine {
 
+  import DownsamplingResolution._
+
   object RollupStrategy {
     def renderString(rollupStrategy: RollupStrategy): String = rollupStrategy match {
       case HourRollup => "hour"
@@ -38,16 +39,10 @@ object RollupMapperEngine {
     }
 
     case object HourRollup extends RollupStrategy {
-
-      import TsdbFormat.DownsamplingResolution._
-
       override def resolutions: Seq[DownsamplingResolution] = Seq(Minute5, Hour)
     }
 
     case object DayRollup extends RollupStrategy {
-
-      import TsdbFormat.DownsamplingResolution._
-
       override def resolutions: Seq[DownsamplingResolution] = Seq(Day)
     }
 
@@ -61,12 +56,12 @@ object RollupMapperEngine {
     def resolutions: Seq[DownsamplingResolution]
 
     def maxResolutionInSeconds = {
-      resolutions.map(TsdbFormat.DownsamplingResolution.resolutionInSeconds).max
+      resolutions.map(DownsamplingResolution.resolutionInSeconds).max
     }
   }
 
-  val aggregators: Map[TsdbFormat.AggregationType.AggregationType, Iterable[Double] => Double] = {
-    import TsdbFormat.AggregationType._
+  val aggregators: Map[AggregationType.AggregationType, Iterable[Double] => Double] = {
+    import AggregationType._
     Map(
       Sum -> (seq => seq.sum),
       Min -> (seq => seq.min),
@@ -99,12 +94,11 @@ object RollupMapperEngine {
   }
 
   def rollupPoints(points: PointRope, resolution: DownsamplingResolution): Iterable[DownsamplingPoint] = {
-    import TsdbFormat.DownsamplingResolution._
     def baseTime(timestamp: Int): Int = timestamp - timestamp % resolutionInSeconds(resolution)
     val groupedByBaseTime = points.asIterable.groupBy(point => baseTime(point.timestamp))
     for {
       (baseTimestamp, pointsToAggregate) <- groupedByBaseTime
-      aggregation <- TsdbFormat.AggregationType.values
+      aggregation <- AggregationType.values
     } yield {
       val downsampling = EnabledDownsampling(resolution, aggregation)
       val pointsView = pointsToAggregate.view
@@ -118,7 +112,7 @@ class RollupMapperEngine(tsdbFormat: TsdbFormat,
                          rollupStrategy: RollupStrategy,
                          keyValueTimestamp: Long) extends Logging {
   def map(value: Result): java.lang.Iterable[RollupMapperOutput] = {
-    val ParsedSingleValueRowResult(timeseriesId, points) = TsdbFormat.parseSingleValueRowResult(value)
+    val PointsResult(timeseriesId, points) = TsdbFormat.parseSingleValueRowResult(value)
     val mapperOutputs = for (dsPoint <- rollupStrategy.rollup(points)) yield {
       val DownsamplingPoint(timestamp, value, downsampling) = dsPoint
       val dsTimeseriesId = timeseriesId.copy(downsampling = downsampling)

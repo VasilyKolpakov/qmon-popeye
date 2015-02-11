@@ -1,7 +1,6 @@
 package popeye.storage
 
 import popeye.storage.TranslationConstants._
-import popeye.storage.hbase.TimeseriesId
 
 object ResultsTranslation {
   def getMetricName(timeseriesId: TimeseriesId, idMap: Map[QualifiedId, String]) = {

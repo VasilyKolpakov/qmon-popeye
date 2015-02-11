@@ -54,7 +54,7 @@ class PointsTranslationSpec extends FlatSpec with Matchers {
       bytesKey(2, 0, 1) -> bytesKey(3, 0, 1),
       bytesKey(2, 0, 2) -> bytesKey(3, 0, 2)
     )
-    val valueTypeId = TsdbFormat.ValueTypes.SingleValueTypeStructureId
+    val valueTypeId = SingleValueType
     val downsampling = NoDownsampling
     TimeseriesId(
       defaultGenerationIdBytes,

@@ -2,11 +2,12 @@ package popeye.query
 
 import com.codahale.metrics.MetricRegistry
 import org.apache.hadoop.hbase.util.Bytes
-import popeye.{Logging, Instrumented, PointRope}
+import popeye.{Logging, Instrumented}
 import popeye.storage._
 import popeye.storage.TranslationConstants._
 import scala.concurrent.{ExecutionContext, Future}
 import popeye.storage.hbase._
+import popeye.storage.AggregationType.AggregationType
 import popeye.query.PointsStorage.NameType.NameType
 import scala.collection.immutable.SortedSet
 import scala.collection.immutable.SortedMap
@@ -15,7 +16,7 @@ trait PointsStorage {
   def getPoints(metric: String,
                 timeRange: (Int, Int),
                 attributes: Map[String, ValueNameFilterCondition],
-                downsampling: Option[(Int, TsdbFormat.AggregationType.AggregationType)],
+                downsampling: Option[(Int, AggregationType)],
                 cancellation: Future[Nothing]): Future[PointsGroups]
 
   def getSuggestions(namePrefix: String, nameType: NameType, maxSuggestions: Int): Seq[String]
@@ -46,7 +47,7 @@ object PointsStorage {
     def getPoints(metric: String,
                   timeRange: (Int, Int),
                   attributes: Map[String, ValueNameFilterCondition],
-                  downsampling: Option[(Int, TsdbFormat.AggregationType.AggregationType)],
+                  downsampling: Option[(Int, AggregationType)],
                   cancellation: Future[Nothing]) = {
       implicit val exct = executionContext
       val retrievalTimer = metrics.seriesRetrievalTime.timerContext()

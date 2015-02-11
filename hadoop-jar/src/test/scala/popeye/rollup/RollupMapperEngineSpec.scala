@@ -4,10 +4,9 @@ import org.apache.hadoop.hbase.client.{Put, Scan}
 import org.apache.hadoop.hbase.{CellUtil, KeyValue}
 import org.scalatest.Matchers
 import popeye.Point
-import popeye.hadoop.bulkload.LightweightUniqueId
 import popeye.rollup.RollupMapperEngine.RollupStrategy
+import popeye.storage.{DownsamplingResolution, EnabledDownsampling, AggregationType}
 import popeye.storage.ValueNameFilterCondition.SingleValueName
-import popeye.storage.hbase.TsdbFormat.EnabledDownsampling
 import popeye.storage.hbase._
 import popeye.test.{AkkaTestKitSpec, PopeyeTestUtils}
 
@@ -52,7 +51,7 @@ class RollupMapperEngineSpec extends AkkaTestKitSpec("points-storage") with Matc
       "test",
       (0, 3600 * 60),
       Map("host" -> SingleValueName("yandex.net")),
-      EnabledDownsampling(TsdbFormat.DownsamplingResolution.Hour, TsdbFormat.AggregationType.Avg)
+      EnabledDownsampling(DownsamplingResolution.Hour, AggregationType.Avg)
     )
     val seriesFuture = HBaseStorage.collectSeries(pointsAsyncIter, Promise().future)
     val pointSeries = Await.result(seriesFuture, Duration.Inf)

@@ -16,7 +16,7 @@ import popeye.pipeline.MetricGenerator
 import popeye.proto.Message
 import popeye.storage.{QueryTranslation, PointsTranslation, ValueNameFilterCondition}
 import PointsTranslation.SuccessfulTranslation
-import popeye.storage.hbase.TsdbFormat.NoDownsampling
+import popeye.storage.NoDownsampling
 import popeye.util.{ARM, ZkConnect}
 import popeye.util.hbase.HBaseConfigured
 

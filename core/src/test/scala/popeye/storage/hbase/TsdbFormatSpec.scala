@@ -16,6 +16,7 @@ import scala.util.Random
 import popeye.storage.ValueIdFilterCondition.{AllValueIds, SingleValueId, MultipleValueIds}
 import popeye.storage.ValueNameFilterCondition.{AllValueNames, SingleValueName, MultipleValueNames}
 import popeye.storage.hbase.TsdbFormat._
+import popeye.storage._
 
 class TsdbFormatSpec extends FlatSpec with Matchers {
 
@@ -45,7 +46,7 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
       bytesKey(2, 0, 1) -> bytesKey(3, 0, 1),
       bytesKey(2, 0, 2) -> bytesKey(3, 0, 2)
     )
-    val valueTypeId = TsdbFormat.ValueTypes.SingleValueTypeStructureId
+    val valueTypeId = SingleValueType
     val downsampling = NoDownsampling
     TimeseriesId(
       defaultGenerationIdBytes,
@@ -67,7 +68,7 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
       bytesKey(2, 0, 1) -> bytesKey(3, 0, 1),
       bytesKey(2, 0, 2) -> bytesKey(3, 0, 2)
     )
-    val valueTypeId = TsdbFormat.ValueTypes.SingleValueTypeStructureId
+    val valueTypeId = SingleValueType
     val downsampling = NoDownsampling
     val timeseriesId = TimeseriesId(
       defaultGenerationIdBytes,
@@ -80,7 +81,7 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
     val timestamp = 3610
     val rawPoint = RawPoint(timeseriesId, timestamp, Left(0))
     val keyValue = tsdbFormat.createPointKeyValue(rawPoint, 0)
-    val valueTypeStructureId = Array[Byte](valueTypeId)
+    val valueTypeStructureId = Array[Byte](TsdbFormat.ValueTypes.SingleValueTypeStructureId)
     val downsamplingByte = Array[Byte](TsdbFormat.renderDownsamplingByte(downsampling))
 
     val timestampBytes = Bytes.toBytes(timestamp - timestamp % downsampling.rowTimespanInSeconds)
@@ -115,7 +116,7 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
   it should "handle int list values" in {
     val tsdbFormat = createTsdbFormat()
     val timestamp = 12312312
-    val timeseriesId = sampleTimeseriesId.copy(valueTypeId = ValueTypes.ListValueTypeStructureId)
+    val timeseriesId = sampleTimeseriesId.copy(valueType = ListValueType)
     val rawListPoint = RawListPoint(timeseriesId, timestamp, Left(Seq(1, 2, 3)))
     val keyValue = tsdbFormat.createPointKeyValue(rawListPoint, 0)
     val result = Result.create(Array[Cell](keyValue))
@@ -125,7 +126,7 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
   it should "handle float list values" in {
     val tsdbFormat = createTsdbFormat()
     val timestamp = 12312312
-    val timeseriesId = sampleTimeseriesId.copy(valueTypeId = ValueTypes.ListValueTypeStructureId)
+    val timeseriesId = sampleTimeseriesId.copy(valueType = ListValueType)
     val rawListPoint = RawListPoint(timeseriesId, timestamp, Right(Seq(1, 2, 3)))
     val keyValue = tsdbFormat.createPointKeyValue(rawListPoint, 0)
     val result = Result.create(Array[Cell](keyValue))

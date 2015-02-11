@@ -10,7 +10,7 @@ import org.apache.hadoop.hbase.{CellUtil, KeyValue}
 import popeye._
 import popeye.proto.{Message, PackedPoints}
 import popeye.storage.hbase.HBaseStorage._
-import popeye.storage.hbase.TsdbFormat.{Downsampling, NoDownsampling}
+import popeye.storage.{Downsampling, NoDownsampling}
 import popeye.storage._
 import popeye.util.hbase.HBaseUtils
 import popeye.util.hbase.HBaseUtils.ChunkedResultsMetrics
@@ -178,7 +178,7 @@ class HBaseStorage(tableName: String,
     AsyncIterator.unwrapFuture(resutlsIteratorFuture)
   }
 
-  private def toPointSequencesMap(rows: mutable.IndexedSeq[ParsedSingleValueRowResult],
+  private def toPointSequencesMap(rows: mutable.IndexedSeq[PointsResult],
                                   timeRange: (Int, Int),
                                   idMap: Map[QualifiedId, String]): Map[PointAttributes, PointRope] = {
     val (startTime, endTime) = timeRange
@@ -194,7 +194,7 @@ class HBaseStorage(tableName: String,
     }.view.force // mapValues returns lazy Map
   }
 
-  private def toListPointSequences(rows: Array[ParsedListValueRowResult],
+  private def toListPointSequences(rows: Array[ListPointsResult],
                                    timeRange: (Int, Int),
                                    idMap: Map[QualifiedId, String]): Seq[ListPointTimeseries] = {
     val (startTime, endTime) = timeRange

@@ -2,15 +2,15 @@ package popeye.storage
 
 import popeye.{AsyncIterator, Logging, PointRope}
 import popeye.query.PointSeriesUtils
-import popeye.storage.hbase.{HBaseStorage, TsdbFormat}
-import popeye.storage.hbase.TsdbFormat._
+import popeye.storage.hbase.HBaseStorage
 import StorageWithTransparentDownsampling._
+import AggregationType.AggregationType
 
 import scala.concurrent.{ExecutionContext, Future}
 
 object StorageWithTransparentDownsampling{
   val aggregators = {
-    import TsdbFormat.AggregationType._
+    import AggregationType._
     Map[AggregationType, Seq[Double] => Double](
       Sum -> (seq => seq.sum),
       Min -> (seq => seq.min),
@@ -26,7 +26,7 @@ class StorageWithTransparentDownsampling(timeseriesStorage: TimeseriesStorage) e
   def getSeries(metric: String,
                 timeRange: (Int, Int),
                 attributes: Map[String, ValueNameFilterCondition],
-                downsampling: Option[(Int, TsdbFormat.AggregationType.AggregationType)],
+                downsampling: Option[(Int, AggregationType)],
                 cancellation: Future[Nothing])
                (implicit extc: ExecutionContext): Future[PointsSeriesMap] = {
     downsampling.map {
@@ -42,7 +42,7 @@ class StorageWithTransparentDownsampling(timeseriesStorage: TimeseriesStorage) e
   private def getDownsampledTimeseriesFuture(metric: String,
                                      timeRange: (Int, Int),
                                      attributes: Map[String, ValueNameFilterCondition],
-                                     downsampling: (Int, TsdbFormat.AggregationType.AggregationType),
+                                     downsampling: (Int, AggregationType),
                                      cancellation: Future[Nothing])
                                     (implicit extc: ExecutionContext): Future[PointsSeriesMap] = {
     val (downsampleInterval, aggregationType) = downsampling

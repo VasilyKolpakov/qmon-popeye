@@ -5,7 +5,6 @@ import popeye.Logging
 import popeye.storage.ValueIdFilterCondition.{AllValueIds, MultipleValueIds, SingleValueId}
 import popeye.storage.ValueNameFilterCondition.{AllValueNames, MultipleValueNames, SingleValueName}
 import popeye.storage.hbase.{GenerationIdMapping, BytesKey}
-import popeye.storage.hbase.TsdbFormat._
 import popeye.storage.TranslationConstants._
 
 import scala.collection.mutable

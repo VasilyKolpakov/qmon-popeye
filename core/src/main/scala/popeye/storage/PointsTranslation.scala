@@ -5,7 +5,6 @@ import popeye.proto.Message
 import popeye.proto.Message.{Attribute, Point}
 import popeye.proto.Message.Point.ValueType._
 import popeye.storage.PointsTranslation.TranslationResult
-import popeye.storage.hbase.TsdbFormat._
 import popeye.storage.TranslationConstants._
 import popeye.storage.hbase._
 
@@ -86,14 +85,14 @@ class PointsTranslation(timeRangeIdMapping: GenerationIdMapping, shardAttributeN
         (name, value)
     }
     def attributesAreDefined = attributeIds.forall { case (n, v) => n.isDefined && v.isDefined}
-    val valueTypeId = getValueTypeId(point)
+    val valueType = getValueType(point)
     if (metricId.isDefined && shardId.isDefined && attributesAreDefined) {
       val tags = attributeIds.map { case (n, v) => (n.get, v.get)}
       val timeseriesId = TimeseriesId(
         generationId,
         downsampling,
         metricId.get,
-        valueTypeId,
+        valueType,
         shardId.get,
         SortedMap(tags: _*)
       )
@@ -103,10 +102,10 @@ class PointsTranslation(timeRangeIdMapping: GenerationIdMapping, shardAttributeN
     }
   }
 
-  private def getValueTypeId(point: Point): Byte = {
+  private def getValueType(point: Point): ValueType = {
     val valueTypeId = point.getValueType match {
-      case INT | FLOAT => TsdbFormat.ValueTypes.SingleValueTypeStructureId
-      case INT_LIST | FLOAT_LIST => TsdbFormat.ValueTypes.ListValueTypeStructureId
+      case INT | FLOAT => SingleValueType
+      case INT_LIST | FLOAT_LIST => ListValueType
     }
     valueTypeId
   }

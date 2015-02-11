@@ -3,8 +3,7 @@ package popeye.storage.hbase
 import popeye.paking.RowPacker.QualifierAndValue
 import popeye.paking.{RowPacker, ValueTypeDescriptor}
 import popeye.proto.Message
-import popeye.storage.{RawQuery, QualifiedId, ValueIdFilterCondition}
-import popeye.storage.hbase.TsdbFormat._
+import popeye.storage._
 import DownsamplingResolution.DownsamplingResolution
 import AggregationType.AggregationType
 import org.apache.hadoop.hbase.KeyValue
@@ -37,86 +36,45 @@ object TsdbFormat {
   /** Mask to select all the FLAG_BITS.  */
   final val FLAGS_MASK: Short = (FLAG_FLOAT | LENGTH_MASK).toShort
   /** Max time delta (in seconds) we can store in a column qualifier.  */
-  val MAX_TIMESPAN: Int = TsdbFormat.DownsamplingResolution.maxTimespan
+  val MAX_TIMESPAN: Int = DownsamplingResolution.maxTimespan
 
-  trait Downsampling {
-    def rowTimespanInSeconds: Int
+  val noDownsamplingResolutionId = 0
 
-    def resolutionInSeconds: Int
+  def getDownsamplingResolutionId(resolution: DownsamplingResolution) = {
+    import DownsamplingResolution._
+    resolution match {
+      case Minute5 => 1
+      case Hour => 2
+      case Day => 3
+    }
   }
 
-  case object NoDownsampling extends Downsampling {
-    override def rowTimespanInSeconds: Int = DownsamplingResolution.secondsInHour
-
-    override def resolutionInSeconds: Int = 1
+  def getDownsamplingResolutionById(id: Int) = {
+    import DownsamplingResolution._
+    id match {
+      case 1 => Minute5
+      case 2 => Hour
+      case 3 => Day
+    }
   }
 
-  case class EnabledDownsampling(downsamplingResolution: DownsamplingResolution,
-                                 aggregationType: AggregationType) extends Downsampling {
-    override def rowTimespanInSeconds: Int = DownsamplingResolution.timespanInSeconds(downsamplingResolution)
-
-    override def resolutionInSeconds: Int = DownsamplingResolution.resolutionInSeconds(downsamplingResolution)
-  }
-
-  object AggregationType extends Enumeration {
-    type AggregationType = Value
-    val Max, Min, Sum, Avg = Value
-
-    def getId(aggregationType: AggregationType) = aggregationType match {
+  def getAggregationTypeId(aggregationType: AggregationType) = {
+    import AggregationType._
+    aggregationType match {
       case Max => 1
       case Min => 2
       case Sum => 3
       case Avg => 4
     }
+  }
 
-    def getById(id: Int) = id match {
+  def getAggregationTypeById(id: Int) = {
+    import AggregationType._
+    id match {
       case 1 => Max
       case 2 => Min
       case 3 => Sum
       case 4 => Avg
-    }
-  }
-
-  object DownsamplingResolution extends Enumeration {
-
-    val secondsInHour = 3600
-    val secondsInDay = secondsInHour * 24
-    type DownsamplingResolution = Value
-    val Minute5, Hour, Day = Value
-
-    val resolutions:SortedMap[Int, DownsamplingResolution] = {
-      val pairs = values.toList.map {
-        resolution => (resolutionInSeconds(resolution), resolution)
-      }
-      SortedMap(pairs: _*)
-    }
-
-    val maxTimespan = values.map(timespanInSeconds).max
-
-    val noDownsamplingResolutionId = 0
-
-    def getId(resolution: DownsamplingResolution) = resolution match {
-      case Minute5 => 1
-      case Hour => 2
-      case Day => 3
-    }
-
-    def getById(id: Int) = id match {
-      case 1 => Minute5
-      case 2 => Hour
-      case 3 => Day
-    }
-
-    def resolutionInSeconds(resolution: DownsamplingResolution) = resolution match {
-      case Minute5 => 300
-      case Hour => secondsInHour
-      case Day => secondsInDay
-    }
-
-    def timespanInSeconds(resolution: DownsamplingResolution) = resolution match {
-      case Minute5 => secondsInHour * 4
-      case Hour => secondsInDay * 2
-      case Day => secondsInDay * 14
     }
   }
 
@@ -125,8 +83,8 @@ object TsdbFormat {
       case NoDownsampling =>
         0.toByte
       case EnabledDownsampling(resolution, aggregationType) =>
-        val resId = DownsamplingResolution.getId(resolution)
-        val aggrId = AggregationType.getId(aggregationType)
+        val resId = getDownsamplingResolutionId(resolution)
+        val aggrId = getAggregationTypeId(aggregationType)
         renderDownsamplingByteFromIds(resId, aggrId)
     }
   }
@@ -137,7 +95,7 @@ object TsdbFormat {
     } else {
       val downsamplingId = parseDownsamplingResolution(dsByte)
       val aggregationId = dsByte & 0x0f
-      EnabledDownsampling(DownsamplingResolution.getById(downsamplingId), AggregationType.getById(aggregationId))
+      EnabledDownsampling(getDownsamplingResolutionById(downsamplingId), getAggregationTypeById(aggregationId))
     }
   }
 
@@ -153,7 +111,7 @@ object TsdbFormat {
     if (downsamplingId == 0) {
       NoDownsampling.rowTimespanInSeconds
     } else {
-      DownsamplingResolution.timespanInSeconds(DownsamplingResolution.getById(downsamplingId))
+      DownsamplingResolution.timespanInSeconds(getDownsamplingResolutionById(downsamplingId))
     }
   }
 
@@ -429,7 +387,7 @@ object TsdbFormat {
     ROW_REGEX_FILTER_ENCODING.decode(byteBuffer).toString
   }
 
-  def parseSingleValueRowResult(result: Result): ParsedSingleValueRowResult = {
+  def parseSingleValueRowResult(result: Result): PointsResult = {
     val row = result.getRow
     require(row(valueTypeIdOffset) == ValueTypes.SingleValueTypeStructureId)
     val (timeseriesId, baseTime) = parseTimeseriesIdAndBaseTime(row)
@@ -445,10 +403,10 @@ object TsdbFormat {
         val value = ValueTypes.parseSingleValueFromSlice(valueArray, valueOffset, valueLength, isFloat)
         Point(baseTime + delta * downsampling.resolutionInSeconds, value.fold(_.toDouble, _.toDouble))
     }
-    ParsedSingleValueRowResult(timeseriesId, PointRope.fromIterator(points))
+    PointsResult(timeseriesId, PointRope.fromIterator(points))
   }
 
-  def parseListValueRowResult(result: Result): ParsedListValueRowResult = {
+  def parseListValueRowResult(result: Result): ListPointsResult = {
     val row = result.getRow
     val (timeseriesId, baseTime) = parseTimeseriesIdAndBaseTime(row)
     val columns = result.getFamilyMap(PointsFamily).asScala.toList
@@ -458,7 +416,7 @@ object TsdbFormat {
         val value = ValueTypes.parseListValue(valueBytes, isFloat)
         ListPoint(baseTime + delta, value)
     }
-    ParsedListValueRowResult(timeseriesId, listPoints)
+    ListPointsResult(timeseriesId, listPoints)
   }
 
   def parseTimeseriesIdAndBaseTime(row: Array[Byte]): (TimeseriesId, Int) = {
@@ -470,7 +428,7 @@ object TsdbFormat {
     val generationId = new BytesKey(copyOfRange(row, 0, uniqueIdGenerationWidth))
     val downsamplingByte = row(downsamplingQualByteOffset)
     val metricId = new BytesKey(copyOfRange(row, metricOffset, metricOffset + metricWidth))
-    val valueTypeId = row(valueTypeIdOffset)
+    val valueTypeByte = row(valueTypeIdOffset)
     val shardId = new BytesKey(copyOfRange(row, shardIdOffset, shardIdOffset + attributeValueWidth))
     val baseTime = Bytes.toInt(row, baseTimeOffset, baseTimeWidth)
     val attributesBytes = copyOfRange(row, attributesOffset, row.length)
@@ -478,11 +436,21 @@ object TsdbFormat {
       generationId,
       parseDownsamplingByte(downsamplingByte),
       metricId,
-      valueTypeId,
+      parseValueType(valueTypeByte),
       shardId,
       createAttributesMap(attributesBytes)
     )
     (timeseriedId, baseTime)
+  }
+
+  private def parseValueType(valueTypeByte: Byte) = valueTypeByte match {
+    case ValueTypes.SingleValueTypeStructureId => SingleValueType
+    case ValueTypes.ListValueTypeStructureId => ListValueType
+  }
+
+  private def renderValueTypeByte(valueType: popeye.storage.ValueType) = valueType match {
+    case SingleValueType => ValueTypes.SingleValueTypeStructureId
+    case ListValueType => ValueTypes.ListValueTypeStructureId
   }
 
   private def createAttributesMap(attributes: Array[Byte]): SortedMap[BytesKey, BytesKey] = {
@@ -504,34 +472,6 @@ object TsdbFormat {
   }
 }
 
-case class TimeseriesId(generationId: BytesKey,
-                        downsampling: Downsampling,
-                        metricId: BytesKey,
-                        valueTypeId: Byte,
-                        shardId: BytesKey,
-                        attributeIds: SortedMap[BytesKey, BytesKey])
-
-sealed trait RawPointT {
-  def timeseriesId: TimeseriesId
-
-  def timestamp: Int
-}
-
-case class RawPoint(timeseriesId: TimeseriesId,
-                    timestamp: Int,
-                    value: Either[Long, Float]) extends RawPointT {
-  require(timeseriesId.valueTypeId == ValueTypes.SingleValueTypeStructureId)
-}
-
-case class RawListPoint(timeseriesId: TimeseriesId,
-                        timestamp: Int,
-                        value: Either[Seq[Long], Seq[Float]]) extends RawPointT {
-  require(timeseriesId.valueTypeId == ValueTypes.ListValueTypeStructureId)
-}
-
-case class ParsedSingleValueRowResult(timeseriesId: TimeseriesId, points: PointRope)
-
-case class ParsedListValueRowResult(timeseriesId: TimeseriesId, lists: Seq[ListPoint])
 
 class TsdbFormat(timeRangeIdMapping: GenerationIdMapping, shardAttributeNames: Set[String]) extends Logging {
 
@@ -564,7 +504,7 @@ class TsdbFormat(timeRangeIdMapping: GenerationIdMapping, shardAttributeNames: S
       timeseriesId.generationId,
       timeseriesId.downsampling,
       timeseriesId.metricId,
-      timeseriesId.valueTypeId,
+      renderValueTypeByte(timeseriesId.valueType),
       timeseriesId.shardId,
       rawPoint.timestamp,
       timeseriesId.attributeIds.toSeq,

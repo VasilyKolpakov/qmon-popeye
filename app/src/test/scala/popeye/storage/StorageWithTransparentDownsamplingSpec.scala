@@ -1,14 +1,11 @@
 package popeye.storage
 
-import java.util.concurrent.{Executor, Executors}
+import java.util.concurrent.Executor
 
 import org.scalatest.{Matchers, FlatSpec}
-import popeye.storage.hbase.TsdbFormat
-import popeye.storage.hbase.TsdbFormat.AggregationType.AggregationType
 import popeye.{PointRope, Point}
-import popeye.storage.hbase.TsdbFormat.{EnabledDownsampling, NoDownsampling, Downsampling}
-import popeye.storage.hbase.TsdbFormat.DownsamplingResolution._
-import popeye.storage.hbase.TsdbFormat.AggregationType._
+import popeye.storage.DownsamplingResolution._
+import popeye.storage.AggregationType._
 import scala.collection.immutable.SortedMap
 import scala.concurrent.duration.Duration
 

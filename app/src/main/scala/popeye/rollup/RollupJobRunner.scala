@@ -14,6 +14,7 @@ import popeye.Logging
 import popeye.hadoop.bulkload.BulkloadUtils
 import popeye.rollup.RollupMapperEngine.RollupStrategy
 import popeye.rollup.RollupMapperEngine.RollupStrategy.{DayRollup, HourRollup}
+import popeye.storage.DownsamplingResolution
 import popeye.storage.hbase.{TsdbFormatConfig, TsdbFormat}
 import popeye.util.ARM
 
@@ -43,10 +44,10 @@ class RollupJobRunner(hBaseConfiguration: Configuration,
       info("resources were successfully created")
       val job = Job.getInstance(hadoopConfiguration)
       val downsamplingResolutionId = {
-        import TsdbFormat.DownsamplingResolution._
+        import DownsamplingResolution._
         rollupStrategy match {
-          case HourRollup => noDownsamplingResolutionId
-          case DayRollup => getId(Hour)
+          case HourRollup => TsdbFormat.noDownsamplingResolutionId
+          case DayRollup => TsdbFormat.getDownsamplingResolutionId(Hour)
         }
       }
       val currentTime = System.currentTimeMillis()

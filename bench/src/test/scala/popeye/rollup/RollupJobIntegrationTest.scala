@@ -1,7 +1,5 @@
 package popeye.rollup
 
-import java.io.File
-
 import akka.actor.ActorSystem
 import com.codahale.metrics.MetricRegistry
 import com.typesafe.config.ConfigFactory
@@ -10,8 +8,8 @@ import org.apache.hadoop.hbase.{TableName, HBaseTestingUtility}
 import org.scalatest.{Inspectors, BeforeAndAfter, Matchers, FlatSpec}
 import popeye.{Point, Logging}
 import popeye.rollup.RollupMapperEngine.RollupStrategy
-import popeye.storage.ValueNameFilterCondition
-import popeye.storage.hbase.TsdbFormat.EnabledDownsampling
+import popeye.storage.{DownsamplingResolution, ValueNameFilterCondition, EnabledDownsampling}
+import popeye.storage.AggregationType
 import popeye.storage.hbase._
 import popeye.test.PopeyeTestUtils
 import popeye.util.ZkConnect
@@ -100,7 +98,7 @@ class RollupJobIntegrationTest extends FlatSpec with Matchers with Inspectors wi
         metricName,
         (oneMonthBeforeEndTime, twoWeeksBeforeEndTime),
         attributes,
-        EnabledDownsampling(TsdbFormat.DownsamplingResolution.Hour, TsdbFormat.AggregationType.Max)
+        EnabledDownsampling(DownsamplingResolution.Hour, AggregationType.Max)
       )
       val seriesFuture = HBaseStorage.collectSeries(iter)
       val series = Await.result(seriesFuture, Duration.Inf).seriesMap.values.head
@@ -117,7 +115,7 @@ class RollupJobIntegrationTest extends FlatSpec with Matchers with Inspectors wi
         metricName,
         (twoWeeksBeforeEndTime, endTime),
         attributes,
-        EnabledDownsampling(TsdbFormat.DownsamplingResolution.Hour, TsdbFormat.AggregationType.Max)
+        EnabledDownsampling(DownsamplingResolution.Hour, AggregationType.Max)
       )
       val seriesFuture = HBaseStorage.collectSeries(iter)
       Await.result(seriesFuture, Duration.Inf).seriesMap.values should be(empty)
