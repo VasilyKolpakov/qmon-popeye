@@ -262,7 +262,7 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with MockitoSt
       attrs = Seq("a" -> "foo")
     )
     def resolveQName(qName: QualifiedName) = {
-      val future = storageStub.uniqueId.resolveIdByName(qName, create = true)(5 seconds)
+      val future = storageStub.uniqueId.resolveIdByName(qName, create = true)
       Await.result(future, Duration.Inf)
     }
 

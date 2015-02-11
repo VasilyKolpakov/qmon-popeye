@@ -126,7 +126,7 @@ object PointsStorageBench extends Logging {
       val currentTime = 1416395727 // Wed Nov 19 14:15:27 MSK 2014
       val points = createTestPoints(currentTime, "test", numberOfPointsPerSeries, numberOfTagValues, timeStep)
       val qNames = points.flatMap(pointTranslation.getAllQualifiedNames(_, currentTime)).toList.distinct
-      val eventualIds = Future.sequence(qNames.map(name => uniqueId.resolveIdByName(name, create = true)(30 seconds)))
+      val eventualIds = Future.sequence(qNames.map(name => uniqueId.resolveIdByName(name, create = true)))
       Await.result(eventualIds, Duration.Inf)
       val keyValues = points.map {
         point =>

@@ -36,14 +36,14 @@ trait UniqueId {
    */
   def resolveIdByName(qName: QualifiedName,
                       create: Boolean,
-                      retries: Int = 3)(implicit timeout: Duration): Future[BytesKey]
+                      retries: Int = 3): Future[BytesKey]
 
   /**
    * Resolve asynchronously name using known id
    * @param qId id to find name for
    * @return future with name
    */
-  def resolveNameById(qId: QualifiedId)(implicit timeout: Duration): Future[String]
+  def resolveNameById(qId: QualifiedId): Future[String]
 
 }
 
@@ -123,7 +123,7 @@ class UniqueIdImpl(resolver: ActorRef,
    */
   def resolveIdByName(qName: QualifiedName,
                       create: Boolean,
-                      retries: Int = 3)(implicit timeout: Duration): Future[BytesKey] = {
+                      retries: Int = 3): Future[BytesKey] = {
     val promise = Promise[BytesKey]()
     nameCache.putIfAbsent(qName, promise.future) match {
       case null =>
@@ -171,7 +171,7 @@ class UniqueIdImpl(resolver: ActorRef,
    * @param qId id to find name for
    * @return future with name
    */
-  def resolveNameById(qId: QualifiedId)(implicit timeout: Duration): Future[String] = {
+  def resolveNameById(qId: QualifiedId): Future[String] = {
     val promise = Promise[String]()
     idCache.putIfAbsent(qId, promise.future) match {
       case null =>

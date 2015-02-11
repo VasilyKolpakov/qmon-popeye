@@ -93,7 +93,7 @@ class HBaseStorage(tableName: String,
       val ids = rowResults.flatMap(rr => ResultsTranslation.getUniqueIds(rr.timeseriesId)).toSet
       val idNamePairsFuture = Future.traverse(ids) {
         case qId =>
-          uniqueId.resolveNameById(qId)(resolveTimeout).map(name => (qId, name))
+          uniqueId.resolveNameById(qId).map(name => (qId, name))
       }
       idNamePairsFuture.map {
         idNamePairs =>
@@ -122,7 +122,7 @@ class HBaseStorage(tableName: String,
       val ids = rowResults.flatMap(rr => ResultsTranslation.getUniqueIds(rr.timeseriesId)).toSet
       val idNamePairsFuture = Future.traverse(ids) {
         case qId =>
-          uniqueId.resolveNameById(qId)(resolveTimeout).map(name => (qId, name))
+          uniqueId.resolveNameById(qId).map(name => (qId, name))
       }
       idNamePairsFuture.map {
         idNamePairs =>
@@ -142,7 +142,7 @@ class HBaseStorage(tableName: String,
     val scanNames = queryTranslation.getQueryNames(metric, timeRange, attributes)
     val scanNameIdPairsFuture = Future.traverse(scanNames) {
       qName =>
-        uniqueId.resolveIdByName(qName, create = false)(resolveTimeout)
+        uniqueId.resolveIdByName(qName, create = false)
           .map(id => Some(qName, id))
           .recover { case e: NoSuchElementException => None }
     }
@@ -217,7 +217,7 @@ class HBaseStorage(tableName: String,
 
   def ping(): Unit = {
     val qName = QualifiedName(TranslationConstants.MetricKind, new BytesKey(Array[Byte](0, 0)), "_.ping")
-    val future = uniqueId.resolveIdByName(qName, create = true)(resolveTimeout)
+    val future = uniqueId.resolveIdByName(qName, create = true)
     Await.result(future, resolveTimeout)
   }
 
@@ -337,7 +337,7 @@ class HBaseStorage(tableName: String,
   private def resolveNames(names: Set[QualifiedName])(implicit eCtx: ExecutionContext): Future[Map[QualifiedName, BytesKey]] = {
     val namesSeq = names.toSeq
     val idsFuture = Future.traverse(namesSeq) {
-      qName => uniqueId.resolveIdByName(qName, create = true)(resolveTimeout)
+      qName => uniqueId.resolveIdByName(qName, create = true)
     }
     idsFuture.map {
       ids => namesSeq.zip(ids)(scala.collection.breakOut): Map[QualifiedName, BytesKey]
@@ -395,7 +395,7 @@ class HBaseStorage(tableName: String,
     val rowIds = ResultsTranslation.getUniqueIds(timeseriesId)
     val idNamePairsFuture = Future.traverse(rowIds) {
       case qId =>
-        uniqueId.resolveNameById(qId)(resolveTimeout).map {
+        uniqueId.resolveNameById(qId).map {
           name => (qId, name)
         }
     }

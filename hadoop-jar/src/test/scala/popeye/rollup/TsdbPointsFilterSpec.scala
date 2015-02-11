@@ -260,7 +260,7 @@ class TsdbPointsFilterSpec extends AkkaTestKitSpec("points-storage") with Matche
                  downsampling: Downsampling = NoDownsampling,
                  storageStub: PointsStorageStub) = {
     def resolveId(qname: QualifiedName) = {
-      val qId = Await.result(storageStub.uniqueId.resolveIdByName(qname, create = true)(5 seconds), Duration.Inf)
+      val qId = Await.result(storageStub.uniqueId.resolveIdByName(qname, create = true), Duration.Inf)
       Some(qId)
     }
     val generationId = storageStub.generationIdMapping
