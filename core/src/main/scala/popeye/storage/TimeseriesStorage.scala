@@ -1,8 +1,8 @@
 package popeye.storage
 
-import popeye.PointRope
+import popeye.{AsyncIterator, PointRope}
 
-import scala.concurrent.{Future, ExecutionContext}
+import scala.concurrent.{Promise, Future, ExecutionContext}
 
 
 object PointsSeriesMap {
@@ -16,6 +16,16 @@ object PointsSeriesMap {
         accGroup.updated(attrs, pointArray)
     }
     PointsSeriesMap(concatinatedSeries)
+  }
+
+  def collectSeries(groupsIterator: AsyncIterator[PointsSeriesMap], cancellation: Future[Nothing] = Promise().future)
+                   (implicit eCtx: ExecutionContext): Future[PointsSeriesMap] = {
+    AsyncIterator.foldLeft(
+      groupsIterator,
+      PointsSeriesMap.empty,
+      PointsSeriesMap.concat,
+      cancellation
+    )
   }
 }
 

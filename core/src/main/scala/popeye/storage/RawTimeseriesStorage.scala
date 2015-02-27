@@ -4,6 +4,7 @@ import popeye.{ListPoint, PointRope, AsyncIterator}
 import popeye.storage.hbase.BytesKey
 
 import scala.collection.immutable.SortedMap
+import scala.concurrent.ExecutionContext
 
 sealed trait ValueType
 
@@ -42,6 +43,7 @@ case class ListPointsResult(timeseriesId: TimeseriesId, lists: Seq[ListPoint])
 
 trait RawTimeseriesStorage {
 
-  def getPointTimeseries(rawQuery: RawQuery): AsyncIterator[Seq[PointsResult]]
+  def getPointTimeseries(rawQuery: RawQuery)
+                        (implicit executionContext: ExecutionContext): AsyncIterator[Seq[PointsResult]]
 
 }

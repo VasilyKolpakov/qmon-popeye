@@ -26,15 +26,6 @@ object HBaseStorage {
 
   case class ListPointTimeseries(tags: SortedMap[String, String], lists: Seq[ListPoint])
 
-  def collectSeries(groupsIterator: AsyncIterator[PointsSeriesMap], cancellation: Future[Nothing] = Promise().future)
-                   (implicit eCtx: ExecutionContext): Future[PointsSeriesMap] = {
-    AsyncIterator.foldLeft(
-      groupsIterator,
-      PointsSeriesMap.empty,
-      PointsSeriesMap.concat,
-      cancellation
-    )
-  }
 }
 
 case class HBaseStorageMetrics(name: String, override val metricRegistry: MetricRegistry) extends Instrumented {
@@ -71,7 +62,7 @@ class HBaseStorage(tableName: String,
                          downsampling: Downsampling,
                          cancellation: Future[Nothing])
                         (implicit eCtx: ExecutionContext): Future[PointsSeriesMap] = {
-    collectSeries(getPoints(metric, timeRange, attributes, downsampling), cancellation)
+    PointsSeriesMap.collectSeries(getPoints(metric, timeRange, attributes, downsampling), cancellation)
   }
 
   def getPoints(metric: String,
